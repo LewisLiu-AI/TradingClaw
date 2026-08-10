@@ -5,6 +5,7 @@ Mounted by ``agent/api_server.py`` via ``register_scheduled_routes(app, ...)``.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import sys as _sys
@@ -52,11 +53,13 @@ def _get_scheduled_research_store():
 
 
 async def _dispatch_scheduled_research_job(job) -> None:
-    """Enqueue one scheduled research job through the session runtime.
+    """Run one scheduled research job through the session runtime.
 
-    ``send_message`` queues the agent attempt and returns once accepted; it
-    does not wait for that agent run to reach a terminal status. The executor's
-    ``COMPLETED`` state for this dispatch path means "successfully enqueued."
+    Waits for the agent run to reach a terminal state, then — when the job's
+    ``config["channels"]`` lists delivery targets — publishes the final reply
+    to every channel-bound chat on those channels (e.g. the Feishu/WeChat users
+    that paired with the bot). The executor's ``COMPLETED`` state therefore
+    means "run finished", not merely "enqueued".
     """
     host = _sys.modules.get("api_server") or _sys.modules.get("agent.api_server")
     svc = host._get_session_service()
@@ -72,7 +75,107 @@ async def _dispatch_scheduled_research_job(job) -> None:
         job.id,
         session.session_id,
     )
-    await svc.send_message(session.session_id, job.prompt)
+    send_result = await svc.send_message(session.session_id, job.prompt)
+    attempt_id = send_result.get("attempt_id") if isinstance(send_result, dict) else None
+
+    reply = await _wait_for_scheduled_reply(svc, session.session_id, attempt_id)
+    if reply is None:
+        raise TimeoutError("scheduled research run produced no reply within the timeout")
+
+    await _deliver_scheduled_result(host, reply.content, job)
+
+
+def _scheduled_run_timeout_s() -> float:
+    """Return how long a scheduled research run may take before it times out."""
+    raw = os.environ.get("VIBE_TRADING_SCHEDULED_RUN_TIMEOUT_S", "").strip()
+    if raw.isdigit():
+        return float(raw)
+    return 3600.0
+
+
+async def _wait_for_scheduled_reply(session_service, session_id: str, attempt_id: str | None):
+    """Poll for the assistant reply linked to ``attempt_id``.
+
+    Mirrors ``ChannelRuntime._wait_for_reply``: returns the first assistant
+    message whose ``linked_attempt_id`` matches, falling back to the most recent
+    assistant message when the run never links one. Returns ``None`` on timeout.
+    """
+    deadline = time.monotonic() + _scheduled_run_timeout_s()
+    last_assistant = None
+    while time.monotonic() < deadline:
+        messages = session_service.get_messages(session_id, limit=200)
+        for message in reversed(messages):
+            if getattr(message, "role", None) != "assistant":
+                continue
+            if attempt_id and getattr(message, "linked_attempt_id", None) != attempt_id:
+                if last_assistant is None:
+                    last_assistant = message
+                continue
+            return message
+        await asyncio.sleep(2)
+    return last_assistant
+
+
+def _available_delivery_channels() -> List[Dict[str, Any]]:
+    """Return configured-and-enabled channels usable as delivery targets.
+
+    Reads the structured agent config (``agent.json``/``agent.yaml``) and keeps
+    only channels whose section has ``enabled: true``.
+    """
+    from src.channels.config import load_channels_config
+    from src.channels.registry import inspect_channels
+
+    statuses = inspect_channels(load_channels_config())
+    return [
+        {"name": name, "display_name": info.get("display_name") or name}
+        for name, info in sorted(statuses.items())
+        if info.get("enabled")
+    ]
+
+
+async def _deliver_scheduled_result(host, content: str, job) -> None:
+    """Publish a scheduled result to bound chats on the job's target channels.
+
+    Targets come from ``job.config["channels"]`` (channel names, e.g.
+    ``["feishu", "weixin"]``). For each target, every chat bound to that channel
+    in the channel runtime's session map receives the result. Best effort: a
+    missing channel runtime or an empty session map simply skips delivery.
+    """
+    config = job.config if isinstance(job.config, dict) else {}
+    channels = config.get("channels") or []
+    if not isinstance(channels, list) or not channels:
+        return
+    runtime = host._get_channel_runtime() if hasattr(host, "_get_channel_runtime") else None
+    if runtime is None or getattr(runtime, "bus", None) is None:
+        logger.info("scheduled result delivery skipped: channel runtime not available")
+        return
+
+    from src.channels.bus.events import OutboundMessage
+
+    text = content.strip()
+    if not text:
+        return
+    prompt_preview = job.prompt.strip().replace("\n", " ")[:40]
+    payload = f"📊 定时研究结果 · {prompt_preview}\n\n{text}"
+    if len(payload) > 4000:
+        payload = payload[:4000] + "…(已截断)"
+
+    session_map = getattr(runtime, "_session_map", None) or {}
+    for channel_name in channels:
+        targets = [key for key in session_map if key.partition(":")[0] == channel_name]
+        for key in targets:
+            _, sep, chat_id = key.partition(":")
+            if not sep:
+                continue
+            await runtime.bus.publish_outbound(
+                OutboundMessage(
+                    channel=channel_name,
+                    chat_id=chat_id,
+                    content=payload,
+                    metadata={"_scheduled_result": True, "job_id": job.id},
+                )
+            )
+            logger.info("scheduled result queued for %s:%s", channel_name, chat_id)
 
 
 def _get_scheduled_research_executor():
@@ -224,6 +327,15 @@ def register_scheduled_routes(
             status=status_filter, limit=limit
         )
         return [ScheduledRunResponse(**j.to_dict()) for j in jobs]
+
+    @app.get(
+        "/scheduled-runs/available-channels",
+        response_model=List[Dict[str, Any]],
+        dependencies=[Depends(require_auth)],
+    )
+    async def list_available_channels() -> List[Dict[str, Any]]:
+        """List configured-and-enabled channels a job can deliver results to."""
+        return _available_delivery_channels()
 
     @app.delete(
         "/scheduled-runs/{job_id}",

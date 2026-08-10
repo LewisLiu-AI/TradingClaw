@@ -221,6 +221,19 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ broker }),
     }),
+  // Scheduled research jobs (delivery channels are stored in config.channels).
+  listScheduledRuns: () => request<ScheduledRunItem[]>("/scheduled-runs"),
+  createScheduledRun: (body: CreateScheduledRunRequest) =>
+    request<ScheduledRunItem>("/scheduled-runs", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  deleteScheduledRun: (id: string) =>
+    request<{ status?: string }>(`/scheduled-runs/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    }),
+  listAvailableDeliveryChannels: () =>
+    request<DeliveryChannel[]>("/scheduled-runs/available-channels"),
 };
 
 // --- Swarm types ---
@@ -971,4 +984,26 @@ export interface MessageItem {
   created_at: string;
   linked_attempt_id?: string;
   metadata?: Record<string, unknown>;
+}
+
+export interface DeliveryChannel {
+  name: string;
+  display_name: string;
+}
+
+export interface ScheduledRunItem {
+  id: string;
+  prompt: string;
+  schedule: string;
+  next_run_at: number;
+  status: string;
+  created_at: number;
+  config: Record<string, unknown>;
+}
+
+export interface CreateScheduledRunRequest {
+  id?: string;
+  prompt: string;
+  schedule: string;
+  config?: { channels?: string[] };
 }
