@@ -3,6 +3,7 @@ import {
   CalendarClock,
   CheckCircle2,
   Loader2,
+  Pencil,
   Plus,
   RefreshCw,
   Trash2,
@@ -26,6 +27,7 @@ export function Scheduled() {
   const [selectedChannels, setSelectedChannels] = useState<string[]>([]);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -61,18 +63,39 @@ export function Scheduled() {
     setCreateError(null);
     try {
       await api.createScheduledRun({
+        id: editingId ?? undefined,
         prompt: prompt.trim(),
         schedule: schedule.trim(),
         config: { channels: selectedChannels },
       });
       setPrompt("");
+      setSchedule("0 9 * * 1-5");
       setSelectedChannels([]);
+      setEditingId(null);
       await load();
     } catch (err) {
-      setCreateError(err instanceof Error ? err.message : "创建失败");
+      setCreateError(err instanceof Error ? err.message : editingId ? "保存失败" : "创建失败");
     } finally {
       setCreating(false);
     }
+  }
+
+  function startEdit(job: ScheduledRunItem) {
+    const ch = jobChannels(job);
+    setEditingId(job.id);
+    setPrompt(job.prompt);
+    setSchedule(job.schedule);
+    setSelectedChannels(ch);
+    setCreateError(null);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setPrompt("");
+    setSchedule("0 9 * * 1-5");
+    setSelectedChannels([]);
+    setCreateError(null);
   }
 
   async function removeJob(id: string) {
@@ -143,7 +166,14 @@ export function Scheduled() {
 
       {/* 创建表单 */}
       <form onSubmit={(e) => void createJob(e)} className="space-y-4 rounded-lg border bg-card p-5 shadow-sm">
-        <h2 className="text-sm font-semibold">新建定时任务</h2>
+        <h2 className="text-sm font-semibold">
+          {editingId ? "编辑定时任务" : "新建定时任务"}
+          {editingId && (
+            <span className="ml-2 text-xs font-normal text-muted-foreground">
+              修改后将以同一 id 覆盖原任务
+            </span>
+          )}
+        </h2>
 
         <div className="space-y-1.5">
           <label className={labelClass}>任务内容 (Prompt)</label>
@@ -197,14 +227,31 @@ export function Scheduled() {
 
         {createError && <div className="text-sm text-red-600">{createError}</div>}
 
-        <button
-          type="submit"
-          disabled={creating || !prompt.trim() || !schedule.trim()}
-          className="inline-flex items-center justify-center gap-2 self-end rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-          创建任务
-        </button>
+        <div className="flex items-center justify-end gap-2">
+          {editingId && (
+            <button
+              type="button"
+              onClick={cancelEdit}
+              className="inline-flex items-center justify-center gap-2 rounded-md border px-4 py-2 text-sm text-muted-foreground transition hover:bg-muted hover:text-foreground"
+            >
+              取消编辑
+            </button>
+          )}
+          <button
+            type="submit"
+            disabled={creating || !prompt.trim() || !schedule.trim()}
+            className="inline-flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {creating ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : editingId ? (
+              <Pencil className="h-4 w-4" />
+            ) : (
+              <Plus className="h-4 w-4" />
+            )}
+            {editingId ? "保存修改" : "创建任务"}
+          </button>
+        </div>
       </form>
 
       {/* 任务列表 */}
@@ -245,6 +292,14 @@ export function Scheduled() {
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   {statusBadge(job.status)}
+                  <button
+                    type="button"
+                    onClick={() => startEdit(job)}
+                    title="编辑"
+                    className="inline-flex items-center justify-center rounded-md p-2 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </button>
                   <button
                     type="button"
                     onClick={() => void removeJob(job.id)}
