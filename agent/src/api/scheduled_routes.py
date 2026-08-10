@@ -301,11 +301,21 @@ def register_scheduled_routes(
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
         now_ms = int(time.time() * 1000)
+        job_id = request.id or str(uuid.uuid4())
+        # Replacing an existing job (the UI "edit" path) must not reset its
+        # next-run to now: that would fire the task immediately. Preserve the
+        # existing schedule position unless the caller overrides it explicitly.
+        existing = _get_scheduled_research_store().get(job_id) if request.id else None
+        next_run_at = (
+            request.next_run_at
+            if request.next_run_at is not None
+            else (existing.next_run_at if existing is not None else now_ms)
+        )
         job = ScheduledResearchJob(
-            id=request.id or str(uuid.uuid4()),
+            id=job_id,
             prompt=request.prompt,
             schedule=request.schedule,
-            next_run_at=request.next_run_at if request.next_run_at is not None else now_ms,
+            next_run_at=next_run_at,
             status=JobStatus.PENDING,
             created_at=now_ms,
             config=request.config,

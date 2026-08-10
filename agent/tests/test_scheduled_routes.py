@@ -80,6 +80,30 @@ def test_create_persists_job_and_returns_201(
     assert stored.schedule == "0 9 * * *"
 
 
+def test_edit_preserves_next_run_when_replacing_job(
+    client: TestClient, store: ScheduledResearchJobStore
+):
+    _seed(store, id="job-seed", next_run_at=1_700_000_000_000)
+    response = client.post(
+        "/scheduled-runs",
+        json={
+            "id": "job-seed",
+            "prompt": "changed prompt",
+            "schedule": "60000",
+            "config": {"channels": ["feishu"]},
+        },
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    # Re-POST without next_run_at must not reset the schedule position.
+    assert body["next_run_at"] == 1_700_000_000_000
+    assert body["config"] == {"channels": ["feishu"]}
+    stored = store.get("job-seed")
+    assert stored is not None
+    assert stored.prompt == "changed prompt"
+
+
 def test_create_generates_id_and_defaults_next_run_when_omitted(
     client: TestClient, store: ScheduledResearchJobStore
 ):
