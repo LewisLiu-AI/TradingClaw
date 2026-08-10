@@ -146,6 +146,22 @@ def test_stale_running_job_recovers_to_pending_and_fires_on_next_tick(tmp_path: 
     assert saved.next_run_at == 1100
 
 
+def test_cron_ranges_and_lists_validate_and_advance() -> None:
+    from src.scheduled_research.models import validate_schedule
+
+    # Ranges and comma-separated lists are accepted (backported from 0.1.13).
+    validate_schedule("0 9 * * 1-5")       # weekdays
+    validate_schedule("0 9 * * 1,3,5")     # Mon/Wed/Fri
+    validate_schedule("0 9 * * 1,3-5")     # mixed list + range
+
+    # next_due lands on the next weekday (Mon) when the weekend is skipped.
+    saturday = _ms(2026, 8, 8, 12, 0)  # Saturday
+    assert datetime.fromtimestamp(next_due("0 9 * * 1-5", saturday) / 1000, timezone.utc).weekday() == 0
+    # A reversed range is rejected.
+    with pytest.raises(ValueError):
+        validate_schedule("0 9 * * 5-1")
+
+
 def test_impossible_cron_marks_failed_and_tick_continues(tmp_path: Path) -> None:
     store = _store(tmp_path)
     now = _ms(2026, 2, 1, 0, 0)

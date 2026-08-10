@@ -107,7 +107,14 @@ def _parse_cron_field(part: str, low: int, high: int) -> set[int] | None:
     if part.startswith("*/"):
         step = int(part[2:])
         return set(range(low, high + 1, step))
-    return {int(part)}
+    values: set[int] = set()
+    for atom in part.split(","):
+        start, _, end = atom.partition("-")
+        if end:
+            values.update(range(int(start), int(end) + 1))
+        else:
+            values.add(int(start))
+    return values
 
 
 def _day_matches(dt: datetime, doms: set[int] | None, months: set[int] | None, dows: set[int] | None) -> bool:
