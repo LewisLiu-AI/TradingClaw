@@ -999,6 +999,7 @@ export interface ScheduledRunItem {
   status: string;
   created_at: number;
   config: Record<string, unknown>;
+  timezone?: string;
 }
 
 export interface CreateScheduledRunRequest {
@@ -1006,4 +1007,5 @@ export interface CreateScheduledRunRequest {
   prompt: string;
   schedule: string;
   config?: { channels?: string[] };
+  timezone?: string;
 }

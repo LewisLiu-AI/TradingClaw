@@ -24,6 +24,7 @@ export function Scheduled() {
 
   const [prompt, setPrompt] = useState("");
   const [schedule, setSchedule] = useState("0 9 * * 1-5");
+  const [timezone, setTimezone] = useState("Asia/Shanghai");
   const [selectedChannels, setSelectedChannels] = useState<string[]>([]);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -67,9 +68,11 @@ export function Scheduled() {
         prompt: prompt.trim(),
         schedule: schedule.trim(),
         config: { channels: selectedChannels },
+        timezone: timezone.trim() || undefined,
       });
       setPrompt("");
       setSchedule("0 9 * * 1-5");
+      setTimezone("Asia/Shanghai");
       setSelectedChannels([]);
       setEditingId(null);
       await load();
@@ -85,6 +88,7 @@ export function Scheduled() {
     setEditingId(job.id);
     setPrompt(job.prompt);
     setSchedule(job.schedule);
+    setTimezone(job.timezone || "Asia/Shanghai");
     setSelectedChannels(ch);
     setCreateError(null);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -94,6 +98,7 @@ export function Scheduled() {
     setEditingId(null);
     setPrompt("");
     setSchedule("0 9 * * 1-5");
+    setTimezone("Asia/Shanghai");
     setSelectedChannels([]);
     setCreateError(null);
   }
@@ -195,6 +200,19 @@ export function Scheduled() {
             placeholder="5 段 cron（如 0 9 * * 1-5）或毫秒间隔（如 86400000）"
           />
           <p className={hintClass}>cron 示例：工作日 09:00 = 0 9 * * 1-5；也可填整数毫秒间隔。</p>
+        </div>
+
+        <div className="space-y-1.5">
+          <label className={labelClass}>时区 (Timezone)</label>
+          <input
+            value={timezone}
+            onChange={(e) => setTimezone(e.target.value)}
+            className={fieldClass}
+            placeholder="IANA 时区键，如 Asia/Shanghai"
+          />
+          <p className={hintClass}>
+            cron 按此时区计算。留空 = UTC。中国时区用 <code>Asia/Shanghai</code>。
+          </p>
         </div>
 
         {channels.length > 0 && (
