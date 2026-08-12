@@ -19,7 +19,11 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from src.config.paths import get_runtime_root
-from src.scheduled_research.models import ScheduledResearchJob, validate_schedule
+from src.scheduled_research.models import (
+    ScheduledResearchJob,
+    validate_schedule,
+    validate_timezone_shape,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -147,6 +151,7 @@ class ScheduledResearchJobStore:
             CorruptStoreError: When the existing store cannot be parsed.
         """
         validate_schedule(job.schedule)
+        validate_timezone_shape(job.timezone)
         jobs = self.load()
         jobs[job.id] = job
         self.save(jobs)

@@ -13,6 +13,7 @@ import time
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, Optional
+from zoneinfo import ZoneInfo
 
 # ---------------------------------------------------------------------------
 # Schedule validation
@@ -83,6 +84,37 @@ def validate_schedule(schedule: str) -> None:
         _validate_cron_field(part, low, high)
 
 
+def validate_timezone_shape(tz: Optional[str]) -> None:
+    """Raise ``ValueError`` when *tz* is not ``None`` or a non-empty string.
+
+    This is the persistence-level check: it deliberately does NOT resolve the
+    key, because resolvability depends on the host's timezone database. A
+    store written where a key resolved must keep loading and persisting on a
+    host where it does not; the executor surfaces the unresolvable key as a
+    per-job schedule failure instead.
+    """
+    if tz is None:
+        return
+    if not isinstance(tz, str) or not tz.strip():
+        raise ValueError("timezone must be a non-empty IANA timezone key or null")
+
+
+def validate_timezone(tz: Optional[str]) -> None:
+    """Raise ``ValueError`` when *tz* is not a resolvable IANA timezone key.
+
+    ``None`` is always valid and means legacy UTC semantics. Resolution goes
+    through :class:`zoneinfo.ZoneInfo`, so whatever validates here is exactly
+    what the executor can evaluate later.
+    """
+    validate_timezone_shape(tz)
+    if tz is None:
+        return
+    try:
+        ZoneInfo(tz)
+    except Exception as exc:
+        raise ValueError(f"timezone {tz!r} is not a recognized IANA timezone key") from exc
+
+
 # ---------------------------------------------------------------------------
 # Status enum
 # ---------------------------------------------------------------------------
@@ -118,6 +150,8 @@ class ScheduledResearchJob:
         last_run_at: Epoch-millisecond timestamp of the most recent executor
             attempt, or ``None`` when the job has not fired yet.
         config: Opaque dict for future backtest parameters.
+        timezone: IANA timezone key the cron schedule is evaluated in, or
+            ``None`` for legacy UTC semantics.
     """
 
     id: str
@@ -128,6 +162,7 @@ class ScheduledResearchJob:
     created_at: int = field(default_factory=lambda: int(time.time() * 1000))
     last_run_at: Optional[int] = None
     config: Dict[str, Any] = field(default_factory=dict)
+    timezone: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize to a plain JSON-serializable dict.
@@ -145,6 +180,7 @@ class ScheduledResearchJob:
             "created_at": self.created_at,
             "last_run_at": self.last_run_at,
             "config": self.config,
+            "timezone": self.timezone,
         }
 
     @classmethod
@@ -177,6 +213,8 @@ class ScheduledResearchJob:
         status = JobStatus(data["status"])
         raw_config = data.get("config")
         config: Dict[str, Any] = raw_config if isinstance(raw_config, dict) else {}
+        timezone = data.get("timezone")
+        validate_timezone_shape(timezone)
         return cls(
             id=job_id,
             prompt=prompt,
@@ -186,4 +224,5 @@ class ScheduledResearchJob:
             created_at=created_at,
             last_run_at=last_run_at,
             config=config,
+            timezone=timezone,
         )

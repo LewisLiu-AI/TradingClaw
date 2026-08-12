@@ -12,11 +12,17 @@ import asyncio
 import logging
 import os
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone, tzinfo
 from typing import Awaitable, Callable
+from zoneinfo import ZoneInfo
 
 from src.config.accessor import get_env_config
-from src.scheduled_research.models import JobStatus, ScheduledResearchJob, validate_schedule
+from src.scheduled_research.models import (
+    JobStatus,
+    ScheduledResearchJob,
+    validate_schedule,
+    validate_timezone,
+)
 from src.scheduled_research.store import ScheduledResearchJobStore
 
 logger = logging.getLogger(__name__)
@@ -65,40 +71,57 @@ def is_due(job: ScheduledResearchJob, now_ms: int) -> bool:
     return job.next_run_at <= now_ms
 
 
-def next_due(schedule: str, after_ms: int) -> int:
+def next_due(schedule: str, after_ms: int, tz: str | None = None) -> int:
     """Return the first due epoch-ms strictly after ``after_ms``.
 
     Supports the scheduled-research schedule format: a bare positive integer
-    string for interval milliseconds, or a simplified 5-field cron expression
-    interpreted in UTC.
+    string for interval milliseconds, or a simplified 5-field cron expression.
+    Cron is evaluated on the wall clock of *tz* (an IANA timezone key) when
+    one is given, in UTC otherwise. Interval schedules ignore *tz* entirely.
     """
     validate_schedule(schedule)
     spec = schedule.strip()
     if spec.isdigit():
         return after_ms + int(spec)
-    return _next_cron_due(spec, after_ms)
+    validate_timezone(tz)
+    return _next_cron_due(spec, after_ms, tz)
 
 
-def _next_cron_due(schedule: str, after_ms: int) -> int:
+def _next_cron_due(schedule: str, after_ms: int, tz: str | None = None) -> int:
     minutes, hours, doms, months, dows = (
         _parse_cron_field(part, low, high) for part, (low, high) in zip(schedule.split(), _CRON_BOUNDS)
     )
-    start = datetime.fromtimestamp(after_ms / 1000.0, timezone.utc) + timedelta(milliseconds=1)
+    zone = timezone.utc if tz is None else ZoneInfo(tz)
+    start = datetime.fromtimestamp(after_ms / 1000.0, zone) + timedelta(milliseconds=1)
     # Round up to the next whole minute; cron has minute resolution.
     if start.second or start.microsecond:
         start = (start + timedelta(minutes=1)).replace(second=0, microsecond=0)
 
-    day = start.replace(hour=0, minute=0, second=0, microsecond=0)
+    day = start.date()
     for offset in range(_CRON_SEARCH_LIMIT_DAYS):
         candidate_day = day + timedelta(days=offset)
         if not _day_matches(candidate_day, doms, months, dows):
             continue
         for hour in sorted(hours) if hours is not None else range(24):
             for minute in sorted(minutes) if minutes is not None else range(60):
-                fire = candidate_day.replace(hour=hour, minute=minute)
-                if fire >= start:
-                    return int(fire.timestamp() * 1000)
+                fire_ms = _local_wall_time_to_epoch_ms(candidate_day, hour, minute, zone)
+                if fire_ms is not None and fire_ms > after_ms:
+                    return fire_ms
     raise ValueError(f"cron schedule has no matching time within search window: {schedule!r}")
+
+
+def _local_wall_time_to_epoch_ms(day: date, hour: int, minute: int, zone: tzinfo) -> int | None:
+    """Resolve one local wall time to a UTC epoch-ms instant.
+
+    A nonexistent wall time (the spring-forward DST gap) returns ``None`` so the
+    occurrence is skipped; an ambiguous wall time (the fall-back fold) resolves
+    with ``fold=0``, the first occurrence, so it runs exactly once.
+    """
+    local = datetime(day.year, day.month, day.day, hour, minute, tzinfo=zone)
+    as_utc = local.astimezone(timezone.utc)
+    if as_utc.astimezone(zone).replace(tzinfo=None) != local.replace(tzinfo=None):
+        return None
+    return int(as_utc.timestamp() * 1000)
 
 
 def _parse_cron_field(part: str, low: int, high: int) -> set[int] | None:
@@ -117,13 +140,20 @@ def _parse_cron_field(part: str, low: int, high: int) -> set[int] | None:
     return values
 
 
-def _day_matches(dt: datetime, doms: set[int] | None, months: set[int] | None, dows: set[int] | None) -> bool:
+def _day_matches(dt: date, doms: set[int] | None, months: set[int] | None, dows: set[int] | None) -> bool:
+    if months is not None and dt.month not in months:
+        return False
+
     cron_day_of_week = (dt.weekday() + 1) % 7  # cron convention: Sunday == 0
-    return (
-        (doms is None or dt.day in doms)
-        and (months is None or dt.month in months)
-        and (dows is None or cron_day_of_week in dows)
-    )
+    day_of_month_matches = doms is None or dt.day in doms
+    day_of_week_matches = dows is None or cron_day_of_week in dows
+
+    # Standard five-field cron treats day-of-month and day-of-week as an OR
+    # when both fields are restricted. A wildcard in either field keeps the
+    # other field authoritative.
+    if doms is not None and dows is not None:
+        return day_of_month_matches or day_of_week_matches
+    return day_of_month_matches and day_of_week_matches
 
 
 class ScheduledResearchExecutor:
@@ -290,7 +320,7 @@ class ScheduledResearchExecutor:
 
         job.last_run_at = now_ms
         try:
-            job.next_run_at = next_due(job.schedule, now_ms)
+            job.next_run_at = next_due(job.schedule, now_ms, job.timezone)
         except Exception:
             logger.error("scheduled research schedule advancement failed for job %s", job.id, exc_info=True)
             job.status = JobStatus.FAILED

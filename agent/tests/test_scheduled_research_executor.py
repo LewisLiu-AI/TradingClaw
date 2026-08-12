@@ -162,6 +162,16 @@ def test_cron_ranges_and_lists_validate_and_advance() -> None:
         validate_schedule("0 9 * * 5-1")
 
 
+def test_next_due_honors_timezone() -> None:
+    monday = _ms(2026, 8, 10, 0, 0)  # Monday 00:00 UTC
+    utc9 = next_due("0 9 * * 1-5", monday)
+    cn9 = next_due("0 9 * * 1-5", monday, "Asia/Shanghai")
+    # Beijing 09:00 == 01:00 UTC; the legacy UTC default stays 09:00 UTC.
+    assert datetime.fromtimestamp(utc9 / 1000, timezone.utc).hour == 9
+    assert datetime.fromtimestamp(cn9 / 1000, timezone.utc).hour == 1
+    assert cn9 < utc9
+
+
 def test_impossible_cron_marks_failed_and_tick_continues(tmp_path: Path) -> None:
     store = _store(tmp_path)
     now = _ms(2026, 2, 1, 0, 0)
