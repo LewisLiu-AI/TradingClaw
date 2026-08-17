@@ -114,7 +114,7 @@
     "disconnected": "接続が切断されました"
   },
   "welcome": {
-    "title": "Vibe-Trading",
+    "title": "Trading-Claw",
     "subtitle": "プロの金融エージェントチームと vibe trading を",
     "describePrompt": "取引戦略を記述して開始してください。",
     "tryExample": "例を試す:",
@@ -269,7 +269,7 @@
     "clearApiKey": "保存済み API キーをクリア",
     "channels": {
       "title": "IM チャンネル",
-      "description": "チャットアダプターを Web UI と CLI が使う同じ Vibe-Trading セッションランタイムへ接続します。",
+      "description": "チャットアダプターを Web UI と CLI が使う同じ Trading-Claw セッションランタイムへ接続します。",
       "runtime": "ランタイム",
       "running": "実行中",
       "stopped": "停止中",

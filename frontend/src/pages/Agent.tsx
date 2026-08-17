@@ -1176,7 +1176,16 @@ export function Agent() {
               ))}
             </div>
           )}
-          {!sessionLoading && messages.length === 0 && <WelcomeScreen onExample={runPrompt} />}
+          {!sessionLoading && messages.length === 0 && (
+            <WelcomeScreen
+              onExample={(prompt) => {
+                // Fill the composer with the example prompt; the user sends it
+                // by pressing the Send button (Enter). Not executed directly.
+                setInput(prompt);
+                inputRef.current?.focus();
+              }}
+            />
+          )}
 
           {timelineRows.map((row, rowIdx) => {
             if (row.render === "live") {

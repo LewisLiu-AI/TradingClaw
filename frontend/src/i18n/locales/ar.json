@@ -114,7 +114,7 @@
     "disconnected": "فُقد الاتصال"
   },
   "welcome": {
-    "title": "Vibe-Trading",
+    "title": "Trading-Claw",
     "subtitle": "تداول بالذكاء مع فريقك من الوكلاء الماليين المحترفين",
     "describePrompt": "صف استراتيجية تداول لتبدأ.",
     "tryExample": "جرّب مثالًا:",
@@ -269,7 +269,7 @@
     "clearApiKey": "مسح مفتاح API المحفوظ",
     "channels": {
       "title": "قنوات IM",
-      "description": "صل محولات الدردشة بنفس وقت تشغيل جلسات Vibe-Trading المستخدم في Web UI و CLI.",
+      "description": "صل محولات الدردشة بنفس وقت تشغيل جلسات Trading-Claw المستخدم في Web UI و CLI.",
       "runtime": "وقت التشغيل",
       "running": "قيد التشغيل",
       "stopped": "متوقف",

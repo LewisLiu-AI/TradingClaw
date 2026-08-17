@@ -119,7 +119,7 @@
     "disconnected": "Connection lost"
   },
   "welcome": {
-    "title": "Vibe-Trading",
+    "title": "Trading-Claw",
     "subtitle": "vibe trading with your professional financial agent team",
     "describePrompt": "Describe a trading strategy to get started.",
     "tryExample": "Try an example:",
@@ -274,7 +274,7 @@
     "clearApiKey": "Clear saved API key",
     "channels": {
       "title": "IM Channels",
-      "description": "Connect chat adapters to the same Vibe-Trading session runtime used by the Web UI and CLI.",
+      "description": "Connect chat adapters to the same Trading-Claw session runtime used by the Web UI and CLI.",
       "runtime": "Runtime",
       "running": "Running",
       "stopped": "Stopped",
