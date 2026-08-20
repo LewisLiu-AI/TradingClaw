@@ -285,6 +285,18 @@ class TestIsToolSuccess:
     def test_failure_json_error(self) -> None:
         assert _is_tool_success('{"status": "error", "error": "boom"}') is False
 
+    def test_failure_ok_false(self) -> None:
+        assert _is_tool_success('{"ok": false, "error": "eastmoney request failed"}') is False
+
+    def test_failure_success_false(self) -> None:
+        assert _is_tool_success('{"success": false, "error": "boom"}') is False
+
+    def test_failure_ok_false_string(self) -> None:
+        assert _is_tool_success('{"ok": "false", "error": "boom"}') is False
+
+    def test_success_ok_true(self) -> None:
+        assert _is_tool_success('{"ok": true, "data": {"count": 3}}') is True
+
     def test_success_non_dict_json(self) -> None:
         assert _is_tool_success("[1, 2, 3]") is True
 

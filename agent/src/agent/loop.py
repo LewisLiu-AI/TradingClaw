@@ -476,13 +476,27 @@ Rules:
 
 
 def _is_tool_success(result: str) -> bool:
-    """Return True if the tool result does not look like an error response."""
+    """Return True if the tool result does not look like an error response.
+
+    Tools signal failure with two JSON envelope conventions: a ``status``
+    field set to ``"error"`` (most tools), or a boolean ``ok`` / ``success``
+    flag set to false (the data-interface tools backed by Eastmoney, Yahoo,
+    FRED, etc.). Any of these marks the result as an error so the dedup cache
+    (``AgentLoop._called_ok``) does not record a failed call as succeeded and
+    skip its retry on a later iteration.
+    """
     try:
         data = json.loads(result)
-        if isinstance(data, dict) and data.get("status") == "error":
-            return False
     except (json.JSONDecodeError, TypeError):
-        pass
+        return True
+    if not isinstance(data, dict):
+        return True
+    if data.get("status") == "error":
+        return False
+    for flag in ("ok", "success"):
+        value = data.get(flag)
+        if value is False or value == "false":
+            return False
     return True
 
 
