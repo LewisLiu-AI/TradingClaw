@@ -9,6 +9,7 @@ const PROXY_PATHS = [
   "/qveris",
   "/settings/llm",
   "/settings/data-sources",
+  "/settings/juliang-proxy",
   "/channels",
   "/mandate",
   "/live",

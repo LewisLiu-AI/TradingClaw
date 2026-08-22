@@ -774,5 +774,35 @@
   },
   "errorBoundary": {
     "somethingWrong": "Something went wrong"
+  },
+  "juliangProxy": {
+    "title": "Juliang Proxy",
+    "subtitle": "Domestic dynamic proxy that unblocks Eastmoney quote APIs (fund flow / northbound / dragon-tiger, etc.) for datacenter IPs. Proxy IPs expire in ~30-60s; the client reuses and re-extracts automatically.",
+    "enabled": "Enable Juliang proxy",
+    "tradeNo": "Trade number (trade_no)",
+    "apiKey": "API key",
+    "username": "Proxy username",
+    "usernamePlaceholder": "Leave blank to keep current username",
+    "password": "Proxy password",
+    "threshold": "Quota alert threshold",
+    "thresholdHint": "Sends a Feishu alert when remaining quota drops below this value.",
+    "configured": "Configured",
+    "surplus": "Remaining quota",
+    "surplusHint": "Alert threshold:",
+    "currentProxy": "Current proxy",
+    "proxyStatus": "Proxy status",
+    "proxyValid": "Valid",
+    "proxyInvalid": "Pending / expired",
+    "lastExtracted": "Last extracted",
+    "refresh": "Refresh quota",
+    "refreshed": "Refreshed",
+    "refreshHint": "Refreshing extracts a new proxy now and consumes 1 quota unit.",
+    "refreshFailed": "Refresh failed",
+    "save": "Save proxy settings",
+    "saved": "Juliang proxy settings saved",
+    "saveFailed": "Failed to save",
+    "loadFailed": "Failed to load Juliang proxy settings",
+    "errorPrefix": "Juliang proxy",
+    "notConfigured": "Not configured"
   }
 }

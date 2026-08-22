@@ -157,6 +157,15 @@ export const api = {
   getChannelStatus: () => request<ChannelRuntimeStatus>("/channels/status"),
   startChannels: () => request<ChannelRuntimeActionResponse>("/channels/start", { method: "POST" }),
   stopChannels: () => request<ChannelRuntimeActionResponse>("/channels/stop", { method: "POST" }),
+  getJuliangProxySettings: () => request<JuliLangProxySettings>("/settings/juliang-proxy"),
+  updateJuliangProxySettings: (settings: UpdateJuliLangProxySettingsRequest) =>
+    request<JuliLangProxySettings>("/settings/juliang-proxy", {
+      method: "PUT",
+      body: JSON.stringify(settings),
+    }),
+  getJuliangProxyStatus: () => request<JuliLangProxyStatus>("/settings/juliang-proxy/status"),
+  refreshJuliangProxy: () =>
+    request<JuliLangProxyStatus>("/settings/juliang-proxy/refresh", { method: "POST" }),
   runChannelPairingCommand: (body: ChannelPairingCommandRequest) =>
     request<ChannelPairingCommandResponse>("/channels/pairing/command", {
       method: "POST",
@@ -308,6 +317,41 @@ export interface DataSourceSettings {
 export interface UpdateDataSourceSettingsRequest {
   tushare_token?: string;
   clear_tushare_token?: boolean;
+}
+
+export interface JuliLangProxySettings {
+  enabled: boolean;
+  trade_no_configured: boolean;
+  api_key_configured: boolean;
+  username: string;
+  password_configured: boolean;
+  quota_alert_threshold: number;
+  env_path: string;
+}
+
+export interface UpdateJuliLangProxySettingsRequest {
+  enabled?: boolean;
+  trade_no?: string;
+  api_key?: string;
+  username?: string;
+  password?: string;
+  quota_alert_threshold?: number;
+  clear_trade_no?: boolean;
+  clear_api_key?: boolean;
+  clear_username?: boolean;
+  clear_password?: boolean;
+}
+
+export interface JuliLangProxyStatus {
+  configured: boolean;
+  enabled: boolean;
+  surplus_quantity: number | null;
+  current_proxy: string | null;
+  proxy_valid: boolean;
+  proxy_valid_until: number | null;
+  last_extracted_at: number | null;
+  quota_alert_threshold: number;
+  last_error: string | null;
 }
 
 export interface ChannelAdapterStatus {

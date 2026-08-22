@@ -145,6 +145,9 @@ from src.api.scheduled_routes import (  # noqa: E402
     _start_scheduled_research_executor,
     _stop_scheduled_research_executor,
 )
+from src.api.juliang_quota_watch import JuliangQuotaWatcher  # noqa: E402
+
+_juliang_quota_watcher = JuliangQuotaWatcher()
 
 
 @app.on_event("startup")
@@ -154,6 +157,7 @@ async def _run_startup_preflight() -> None:
 
     run_preflight(console)
     _start_scheduled_research_executor()
+    _juliang_quota_watcher.start()
     from src.config.accessor import get_env_config
 
     if get_env_config().agent_tuning.vibe_trading_channels_auto_start:
@@ -165,6 +169,7 @@ async def _stop_scheduled_research_on_shutdown() -> None:
     """Stop the scheduled research executor on server shutdown."""
     await _stop_channel_runtime()
     await _stop_scheduled_research_executor()
+    await _juliang_quota_watcher.stop()
 
 
 # ============================================================================
@@ -224,6 +229,9 @@ from src.api.channels_routes import register_channels_routes  # noqa: E402
 register_channels_routes(app)
 from src.api.qveris_routes import qveris_router  # noqa: E402  # QVERIS-INTEGRATION
 app.include_router(qveris_router)  # QVERIS-INTEGRATION
+
+from src.api.juliang_routes import juliang_router  # noqa: E402
+app.include_router(juliang_router)
 
 from src.api.channels_routes import (  # noqa: F401, E402
     ChannelPairingCommandRequest,
