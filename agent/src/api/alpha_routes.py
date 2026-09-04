@@ -111,6 +111,22 @@ _VALID_UNIVERSES = {"equity_us", "equity_cn", "equity_hk", "crypto", "futures"}
 # ``src.factors.compare_runner.SORT_KEYS`` (kept local to avoid a heavy import).
 _VALID_SORTS = {"ir", "ic_mean", "ic_positive_ratio", "ic_count"}
 _BENCH_UNIVERSES = {"csi300", "sp500", "btc-usdt"}
+# Registry meta tags universes as ``equity_us``/``equity_cn``/``crypto`` (see
+# ``_VALID_UNIVERSES`` and the ``/alpha/list`` filter), while bench + compare
+# need the data-panel keys understood by ``bench_runner``. Accept the meta
+# names as aliases so deep links like ``/alpha-zoo/bench?universe=equity_us``
+# (built by the Alpha Zoo detail page's "Run bench" button) validate instead
+# of 422-ing. Universes with no data panel (equity_hk, futures) stay rejected.
+_BENCH_UNIVERSE_ALIASES = {
+    "equity_us": "sp500",
+    "equity_cn": "csi300",
+    "crypto": "btc-usdt",
+}
+
+
+def _normalized_bench_universe(v: str) -> str:
+    """Map a meta-style universe tag onto its bench panel key; pass through others."""
+    return _BENCH_UNIVERSE_ALIASES.get(v, v)
 
 
 def _now_iso() -> str:
@@ -166,6 +182,7 @@ class BenchRequest(BaseModel):
     @field_validator("universe")
     @classmethod
     def _universe_known(cls, v: str) -> str:
+        v = _normalized_bench_universe(v)
         if v not in _BENCH_UNIVERSES:
             raise ValueError(
                 f"unknown universe {v!r}; expected one of {sorted(_BENCH_UNIVERSES)}"
@@ -200,6 +217,7 @@ class CompareRequest(BaseModel):
     @field_validator("universe")
     @classmethod
     def _universe_known(cls, v: str) -> str:
+        v = _normalized_bench_universe(v)
         if v not in _BENCH_UNIVERSES:
             raise ValueError(
                 f"unknown universe {v!r}; expected one of {sorted(_BENCH_UNIVERSES)}"
