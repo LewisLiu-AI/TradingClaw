@@ -119,7 +119,7 @@ do_deploy() {
 
   # 1. Build frontend locally (server has no node/npm).
   if [ "$SKIP_BUILD" -eq 0 ]; then
-    log "Building frontend (npm run build)…"
+    log "Building frontend (npm run build)..."
     ( cd "$ROOT/frontend" && npm run build ) || die "frontend build failed"
   fi
 
@@ -142,14 +142,14 @@ do_deploy() {
 
   # 5. Update Python deps (server has internet; mirror avoids the slow official index).
   if [ "$SKIP_DEPS" -eq 0 ]; then
-    log "Updating Python deps (pip install -e .)…"
+    log "Updating Python deps (pip install -e .)..."
     remote_exec "cd $DEPLOY_APP_DIR && su -s /bin/bash vibe -c 'venv/bin/pip install -e . -i $PIP_INDEX_URL --timeout 60 --retries 5'"
   fi
 
   # 6. Restart and wait for health (startup takes ~1 min on this box).
-  log "Restarting $DEPLOY_SERVICE…"
+  log "Restarting $DEPLOY_SERVICE..."
   remote_exec "systemctl restart $DEPLOY_SERVICE"
-  log "Waiting for health on port $DEPLOY_HTTP_PORT…"
+  log "Waiting for health on port $DEPLOY_HTTP_PORT..."
   remote_exec "for i in \$(seq 1 40); do curl -sf http://127.0.0.1:$DEPLOY_HTTP_PORT/health && echo && break; sleep 3; done"
   remote_exec "$DEPLOY_APP_DIR/venv/bin/vibe-trading --version"
   log "Deploy complete."
@@ -168,7 +168,7 @@ do_rollback() {
   log "Rolling back to $backup"
   remote_exec "test -f '$backup'"
   remote_exec "cd /opt && tar xzf '$backup' && chown -R vibe:vibe vibe-trading && cd $DEPLOY_APP_DIR && su -s /bin/bash vibe -c 'venv/bin/pip install -e . -i $PIP_INDEX_URL --timeout 60 --retries 5' && systemctl restart $DEPLOY_SERVICE"
-  log "Waiting for health on port $DEPLOY_HTTP_PORT…"
+  log "Waiting for health on port $DEPLOY_HTTP_PORT..."
   remote_exec "for i in \$(seq 1 40); do curl -sf http://127.0.0.1:$DEPLOY_HTTP_PORT/health && echo && break; sleep 3; done"
   remote_exec "$DEPLOY_APP_DIR/venv/bin/vibe-trading --version"
   log "Rollback complete."
@@ -179,7 +179,7 @@ do_setup_key() {
   [ -f "$pub" ] || die "no key at $pub — generate one with: ssh-keygen -t ed25519"
   log "Copying $pub → $DEPLOY_HOST:/root/.ssh/authorized_keys (will prompt for the server password once)"
   ssh-copy-id "${SSH_OPTS[@]}" "$SSH_DEST" || die "ssh-copy-id failed"
-  log "Verifying key-based auth…"
+  log "Verifying key-based auth..."
   ssh -o BatchMode=yes "${SSH_OPTS[@]}" "$SSH_DEST" 'echo KEY_AUTH_OK' || die "key auth not working"
   log "SSH key auth is set up. Future deploys need no password."
 }
