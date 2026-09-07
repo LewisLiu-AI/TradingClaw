@@ -95,28 +95,28 @@
   },
   "overnight_us_conditions": {
    "overnight_qqq_le_1.0pct": {
-    "p_star50_drop_same_day_pct": 24.1,
-    "n": 290
+    "p_star50_drop_same_day_pct": 24.2,
+    "n": 281
    },
    "overnight_qqq_le_1.5pct": {
     "p_star50_drop_same_day_pct": 27.0,
-    "n": 185
+    "n": 174
    },
    "overnight_qqq_le_2.0pct": {
-    "p_star50_drop_same_day_pct": 31.8,
-    "n": 107
+    "p_star50_drop_same_day_pct": 32.4,
+    "n": 102
    },
    "overnight_soxx_le_1.0pct": {
-    "p_star50_drop_same_day_pct": 22.5,
-    "n": 413
+    "p_star50_drop_same_day_pct": 22.6,
+    "n": 402
    },
    "overnight_soxx_le_1.5pct": {
-    "p_star50_drop_same_day_pct": 23.4,
-    "n": 320
+    "p_star50_drop_same_day_pct": 23.9,
+    "n": 305
    },
    "overnight_soxx_le_2.0pct": {
-    "p_star50_drop_same_day_pct": 27.0,
-    "n": 233
+    "p_star50_drop_same_day_pct": 28.3,
+    "n": 223
    }
   }
  }

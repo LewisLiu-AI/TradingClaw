@@ -9,11 +9,10 @@
 规则（与 2026-09 全样本报告口径一致）:
     大跌日   = 单日涨跌幅 ≤ -1.5%
     事件簇   = 间隔 ≤5 个交易日的大跌日归并；episode_id 全局递增
-    隔夜美股 = drop_days.csv 的 overnight_qqq/overnight_soxx 列：旧日期原样保留；
-               新日期若存在 data/qqq.csv、data/soxx.csv（date,close，美股日K）则按
-               "A 股交易日 t 之前最近一个美股收盘日的涨跌幅" 计算，否则留空。
-               summary.json 的 model_calibration.overnight_us_conditions 需要全样本
-               隔夜序列，无法仅凭本目录数据重算，一律沿用旧值。
+    隔夜美股 = drop_days.csv 的 overnight_qqq/overnight_soxx 列：来自 data/qqq.csv、data/soxx.csv
+               （date,close，美股日K，Yahoo chart API）按"A 股交易日 t 之前最近一个美股收盘日
+               的涨跌幅"计算；data/ 缺失的日期沿用旧值。summary.json 的
+               model_calibration.overnight_us_conditions 同理自动计算（data/ 覆盖全历史时）。
 """
 import csv
 import json
@@ -180,6 +179,24 @@ def main():
     for v in calib.values():
         v["pct"] = round(v["pct"], 1) if v["pct"] is not None else None
 
+    # ---- 隔夜美股条件概率（全样本，需 data/qqq.csv、data/soxx.csv）----
+    overnight_us = None
+    if qqq and soxx:
+        def cond_us(mapping, thr):
+            days = [(mapping.get(dates[i]), pct[i]) for i in range(1, n)]
+            days = [(o, p) for o, p in days if o is not None and o <= -thr]
+            if not days:
+                return None, 0
+            hit = sum(1 for o, p in days if p is not None and p <= DROP_TH)
+            return round(100.0 * hit / len(days), 1), len(days)
+        overnight_us = {}
+        for name, mapping in (("qqq", qqq), ("soxx", soxx)):
+            for thr in (1.0, 1.5, 2.0):
+                p, n_ = cond_us(mapping, thr)
+                overnight_us[f"overnight_{name}_le_{thr}pct"] = {
+                    "p_star50_drop_same_day_pct": p, "n": n_}
+    calib["overnight_us_conditions"] = overnight_us  # None => 沿用旧值
+
     by_year = {}
     for r in drop_rows:
         y = r["date"][:4]
@@ -238,6 +255,13 @@ def main():
                 old = old_summary.get(k, {})
                 for kk, vv in v.items():
                     if kk == "overnight_us_conditions":
+                        if vv is None:
+                            print(f"[KEEP] calib.overnight_us_conditions: data/ 缺失，沿用旧值")
+                        else:
+                            for k3, v3 in vv.items():
+                                o = old.get("overnight_us_conditions", {}).get(k3, {})
+                                flag = "OK " if abs((o.get("p_star50_drop_same_day_pct") or 0) - (v3["p_star50_drop_same_day_pct"] or 0)) < 0.15 and o.get("n") == v3["n"] else "DIFF"
+                                print(f"[{flag}] calib.overnight_us.{k3}: new=({v3['p_star50_drop_same_day_pct']},n={v3['n']}) old=({o.get('p_star50_drop_same_day_pct')},n={o.get('n')})")
                         continue
                     o = old.get(kk, {})
                     flag = "OK " if abs((o.get("pct") or 0) - (vv["pct"] or 0)) < 0.15 and o.get("n") == vv["n"] else "DIFF"
@@ -281,7 +305,8 @@ def main():
             w.writerows(ep_rows)
         if os.path.exists(old_summary_path):
             old_summary = json.load(open(old_summary_path))
-            new_summary["model_calibration"]["overnight_us_conditions"] = old_summary["model_calibration"]["overnight_us_conditions"]
+            if new_summary["model_calibration"]["overnight_us_conditions"] is None:
+                new_summary["model_calibration"]["overnight_us_conditions"] = old_summary["model_calibration"]["overnight_us_conditions"]
         with open(os.path.join(ART, "summary.json"), "w") as f:
             json.dump(new_summary, f, ensure_ascii=False, indent=1)
         print("written:", ART)
