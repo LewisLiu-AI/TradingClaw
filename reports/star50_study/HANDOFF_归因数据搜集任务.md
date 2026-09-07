@@ -99,7 +99,7 @@ python3 daily_score.py --date 2026-07-01                     # 历史复演
   7. **E3 巨量解禁（未来30日）**：wind `get_stock_events` 问"查询科创板（688开头）未来30日内限售股解禁时间表、解禁数量和解禁市值合计"→ 逐股解禁市值加总，除以科创板流通市值（估约5.5万亿）**>3% = +1**。2026-09-08 实测：未来30日合计约 603 亿元 ≈ 1.1% → E3=0；单票集中点：中巨芯 197.8亿（9/8 当日）、信科移动 174.3亿（9/28）、**沐曦 79.6亿（9/17，科创50成分股）**、盛科通信 19.6亿（9/14，成分股）——成分股大额解禁即使总量未触线也应人工提示。
   - ⚠️ vibe-trading MCP 服务（web_search/get_market_data/get_lockup_expiry 等）会话易失效（"Session not found"），失效后改用 wind 系工具与内置 WebSearch 替代。
 - **量化因子取数路径（已实测可用）**：
-  - A1/A2 隔夜美股：新浪/腾讯财经或 `data/soxx.csv`、`data/qqq.csv`（date,close 两列日K，脚本自动取最新环比）；
+  - A1/A2 隔夜美股：`data/soxx.csv`、`data/qqq.csv` 已播种（date,close 两列日K，2020-09→今，Yahoo chart API），daily_score.py **零参数即可自动读取**；过期后刷新一行命令：`curl -s -H "User-Agent: Mozilla/5.0" "https://query1.finance.yahoo.com/v8/finance/chart/SOXX?range=6y&interval=1d"` 解析 timestamp/quote.close 覆盖重写（stooq 已加 JS 反爬不可用）；
   - D3 汇率：`--fx10d` 手工传入（新浪外汇/问财"USDCNH 10日涨幅"；yfinance FX 实测超时）；
   - M 乘数 PE 分位：wind `get_stock_fundamentals` 问"科创50(000688.SH)当前市盈率TTM及其5年历史分位数"→返回"当日市盈率五年分位数"列（2026-09-07 读数 74.75%）；
   - D1 两融：wind `get_stock_fundamentals` 问"A股市场融资融券余额最近5个交易日"→沪深合计后算 5 日降幅（2026-09-04 读数 2.6293 万亿、降幅约 -1.1%，未触发 1.5% 阈值但已接近，列入每日盯盘）；
