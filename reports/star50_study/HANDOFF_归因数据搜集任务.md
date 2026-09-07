@@ -34,7 +34,7 @@
    python3 build_artifacts.py          # 干跑：重算并与现有 artifacts 逐项比对，打印 [OK]/[DIFF] 和新增大跌日/新簇
    python3 build_artifacts.py --write  # 确认差异符合预期后落盘
    ```
-   规则已固化在脚本内并经全样本校验（91 簇逐一复现）：大跌日 = 单日涨跌幅 ≤ -1.5%；事件簇 = 相邻大跌日索引差 ≤5 归并；episode_id 全局递增（当前已用到 **91**，新增从 92 起，同时更新 `attribution_raw/{YYYY}.json`）。脚本输出"NEW episodes"即为待归因新簇。注意：summary.json 的 `model_calibration.overnight_us_conditions` 需要全样本隔夜美股序列（本目录未存），脚本会沿用旧值；新增大跌日的 overnight_qqq/soxx 列留空，如需补齐可把美股日 K 存到 `data/qqq.csv`、`data/soxx.csv`（列 date,close）后重跑。
+   规则已固化在脚本内并经全样本校验（91 簇逐一复现，含隔夜条件概率六格）：大跌日 = 单日涨跌幅 ≤ -1.5%；事件簇 = 相邻大跌日索引差 ≤5 归并；episode_id 全局递增（当前已用到 **91**，新增从 92 起，同时更新 `attribution_raw/{YYYY}.json`）。脚本输出"NEW episodes"即为待归因新簇。`overnight_us_conditions` 已可全量复现：`data/qqq.csv`、`data/soxx.csv`（Yahoo chart API，2020-06→今）存有全历史隔夜序列，新增大跌日的 overnight 列也会自动填充；仅当 data/ 缺失时才沿用旧值。
 3. **归因新簇**：在 `attribution_raw/{YYYY}.json` 数组**末尾追加**，schema 逐字段照抄既有条目（episode_id / dates / cum_drop / category 六选一 / catalyst ≤20字 / detail ≤100字写清"日期→事件" / sources 1-3条真实URL / confidence 高中低）。
 4. **更新该年 `_summary.txt`**（若新事件改变了年度主导叙事）。
 5. **重建报告**：
