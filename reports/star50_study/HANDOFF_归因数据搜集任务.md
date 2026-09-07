@@ -74,6 +74,8 @@
 
 ### 0.6 每日打分（模型日常运行，§7.4 的自动化）
 
+> 🔁 **已部署定时任务**：automationId `automation-f3dfaca2-e9f6-4c12-a990-e1b81c2014c6`，cron `30 8 * * 1-5`（周一至周五 08:30，自动执行 §0.6 全流程并汇报级别）。管理方式：ZCode 会话内 CronList / CronUpdate / CronDelete；修改时间或停用告知执行 Agent 即可。cron 不含中国节假日历，休市日运行会回复"今日休市"。
+
 ```bash
 python3 daily_score.py --soxx -1.2 --qqq -0.8 --fx10d 0.3   # 隔夜与汇率手工传入
 python3 daily_score.py --b1 --c1 --pe-percentile 90          # 事件因子命中开关 + M乘数
