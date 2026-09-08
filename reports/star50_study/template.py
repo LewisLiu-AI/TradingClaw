@@ -92,11 +92,11 @@ a{color:var(--accent)}
 <header class="hero">
   <div class="inner">
     <h1>科创50单日大跌：利空归因全景 与 预警模型 v1.0</h1>
-    <div class="sub">覆盖 2020-07-23（指数发布）至 2026-09-07 全部 <b>259 个单日跌幅≥1.5%</b> 交易日、91 个下跌事件簇；逐簇新闻检索归因（消息面/政策面/海外/板块自身），并基于 1,503 个交易日完成预警因子校准。</div>
+    <div class="sub">覆盖 2020-07-23（指数发布）至 2026-09-08 全部 <b>260 个单日跌幅≥1.5%</b> 交易日、91 个下跌事件簇；逐簇新闻检索归因（消息面/政策面/海外/板块自身），并基于 1,504 个交易日完成预警因子校准。</div>
     <div class="meta">
-      <span>数据窗口 2020-07-01 → 2026-09-07</span>
+      <span>数据窗口 2020-07-01 → 2026-09-08</span>
       <span>交易日 n=__N_DAYS__</span>
-      <span>大跌日 259（17.2%）</span>
+      <span>大跌日 260（17.3%）</span>
       <span>事件簇 91</span>
       <span>已归因 __COVERED__/91 簇（高置信 __HIGH_CONF__）</span>
       <span>生成日期 2026-09-08</span>
@@ -124,15 +124,15 @@ a{color:var(--accent)}
 <p class="sec-note">红点 = 单日跌幅≥1.5% 的交易日（点位越高/越密集代表高位风险积累）。悬停可查看日期。</p>
 <div class="card">
   <div class="stat-grid">
-    <div class="stat"><div class="v">1,503</div><div class="l">交易日样本</div></div>
-    <div class="stat"><div class="v neg">259</div><div class="l">大跌日（≥1.5%）</div></div>
+    <div class="stat"><div class="v">1,504</div><div class="l">交易日样本</div></div>
+    <div class="stat"><div class="v neg">260</div><div class="l">大跌日（≥1.5%）</div></div>
     <div class="stat"><div class="v">17.2%</div><div class="l">大跌日占比</div></div>
     <div class="stat"><div class="v">91</div><div class="l">下跌事件簇</div></div>
     <div class="stat"><div class="v neg">-29.4%</div><div class="l">最深事件簇(2022.3-4)</div></div>
     <div class="stat"><div class="v neg">-9.22%</div><div class="l">单日最大(2025-04-07)</div></div>
   </div>
   <div id="chartIndex" class="chart"></div>
-  <p class="small">注：2020-07-23 之前为指数公司回溯计算值。跌幅分档：-1.5~-2% 共 85 天；-2~-3% 共 110 天；-3~-4% 共 32 天；&lt;-4% 共 32 天。</p>
+  <p class="small">注：2020-07-23 之前为指数公司回溯计算值。跌幅分档：-1.5~-2% 共 86 天；-2~-3% 共 110 天；-3~-4% 共 32 天；&lt;-4% 共 32 天。</p>
 </div>
 
 <!-- ============ S2 归因总览 ============ -->
@@ -162,7 +162,7 @@ __CASE_CARDS__
 </table></div></div>
 
 <!-- ============ S5 逐日明细 ============ -->
-<h2 class="sec" id="s5"><span class="no">5</span>259 个大跌日逐日明细</h2>
+<h2 class="sec" id="s5"><span class="no">5</span>260 个大跌日逐日明细</h2>
 <p class="sec-note">隔夜美股 = 前一美股交易日（美东时间）收盘涨跌，对应A股当日开盘前的信息集；T+5/T+20 = 大跌日收盘后第5/20个交易日相对收益。</p>
 <div class="card"><div class="scrollbox" style="max-height:560px"><table>
 <thead><tr><th>日期</th><th>当日跌幅</th><th>隔夜QQQ</th><th>隔夜SOXX</th><th>T+5</th><th>T+20</th><th>所属类别</th></tr></thead>
@@ -173,7 +173,7 @@ __CASE_CARDS__
 <h2 class="sec" id="s6"><span class="no">6</span>规律提炼与因子校准</h2>
 <div class="card">
   <h3 style="font-size:16px;margin-bottom:10px">6.1 隔夜美股映射：显著但非主导</h3>
-  <p style="font-size:14px">以隔夜纳指(QQQ)/费城半导体(SOXX)涨跌为条件，科创50 当日出现≥1.5%大跌的条件概率如下（样本 1,503 日）：</p>
+  <p style="font-size:14px">以隔夜纳指(QQQ)/费城半导体(SOXX)涨跌为条件，科创50 当日出现≥1.5%大跌的条件概率如下（样本 1,504 日）：</p>
   <table style="margin-top:10px">
     <thead><tr><th>条件（隔夜美股）</th><th>当日科创50大跌概率</th><th>样本</th></tr></thead>
     <tbody>__US_ROWS__</tbody>
@@ -315,7 +315,7 @@ __CASE_CARDS__
 <!-- ============ S8 方法 ============ -->
 <h2 class="sec" id="s8"><span class="no">8</span>数据、方法与局限性</h2>
 <div class="card">
-  <p style="font-size:14px"><b>数据与方法：</b>科创50指数（000688.SH）日线取自腾讯行情接口（2020-07-01→2026-09-07，1,503 个交易日，2020-07-23 前为回溯值）；隔夜美股以 QQQ/SOXX（Yahoo/stooq）前一交易日收盘价计算；事件簇定义为"间隔≤5个交易日的大跌日归并"；归因由多路研究代理逐簇新闻检索（搜索引擎+原文阅读），要求提供可查证来源并标注置信度；条件概率与事件研究统计基于全样本 1,503 日计算。</p>
+  <p style="font-size:14px"><b>数据与方法：</b>科创50指数（000688.SH）日线取自腾讯行情接口（2020-07-01→2026-09-08，1,504 个交易日，2020-07-23 前为回溯值）；隔夜美股以 QQQ/SOXX（Yahoo/stooq）前一交易日收盘价计算；事件簇定义为"间隔≤5个交易日的大跌日归并"；归因由多路研究代理逐簇新闻检索（搜索引擎+原文阅读），要求提供可查证来源并标注置信度；条件概率与事件研究统计基于全样本 1,504 日计算。</p>
   <p style="font-size:14px;margin-top:10px"><b>局限性：</b></p>
   <ul style="font-size:13.5px;color:#374151;margin:6px 0 0 18px">
     <li>归因依赖公开新闻，<b>部分下跌是多重因素叠加</b>，单一"主因"归类必然损失信息；低置信簇（尤其-1.5~-2%区间）仅作参考。</li>
