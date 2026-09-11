@@ -46,6 +46,9 @@ export default defineConfig(({ mode }) => {
         "^/runs/[^/]+/?$": apiProxyWithHtmlFallback,
         "/runs": apiProxy,
         "/correlation": apiProxyWithHtmlFallback,
+        // SPA Plugins page shadows the GET /plugins API — browser navigation
+        // falls back to index.html while fetch calls (Accept: */*) proxy.
+        "/plugins": apiProxyWithHtmlFallback,
         "^/alpha(?:/|$)": apiProxy,
       },
     },

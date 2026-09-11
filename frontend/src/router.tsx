@@ -28,6 +28,9 @@ const AlphaZoo = lazy(() =>
 const Scheduled = lazy(() =>
   import("@/pages/Scheduled").then((m) => ({ default: m.Scheduled })),
 );
+const Plugins = lazy(() =>
+  import("@/pages/Plugins").then((m) => ({ default: m.Plugins })),
+);
 
 function PageLoader() {
   return (
@@ -62,6 +65,7 @@ export const router = createBrowserRouter([
       { path: "/alpha-zoo/compare", element: wrap(AlphaZoo) },
       { path: "/alpha-zoo/:alphaId", element: wrap(AlphaZoo) },
       { path: "/scheduled", element: wrap(Scheduled) },
+      { path: "/plugins", element: wrap(Plugins) },
     ],
   },
 ]);

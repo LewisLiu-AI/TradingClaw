@@ -157,6 +157,19 @@ export const api = {
   getChannelStatus: () => request<ChannelRuntimeStatus>("/channels/status"),
   startChannels: () => request<ChannelRuntimeActionResponse>("/channels/start", { method: "POST" }),
   stopChannels: () => request<ChannelRuntimeActionResponse>("/channels/stop", { method: "POST" }),
+
+  // Plugins API (MCP servers & skills)
+  listPlugins: () => request<PluginsResponse>("/plugins"),
+  updateMCPServer: (name: string, patch: UpdateMCPServerRequest) =>
+    request<MCPServerInfo>(`/plugins/mcp/${encodeURIComponent(name)}`, {
+      method: "PUT",
+      body: JSON.stringify(patch),
+    }),
+  updateSkillEnabled: (name: string, enabled: boolean) =>
+    request<{ name: string; enabled: boolean; state_path: string }>(`/plugins/skills/${encodeURIComponent(name)}`, {
+      method: "PUT",
+      body: JSON.stringify({ enabled }),
+    }),
   getJuliangProxySettings: () => request<JuliLangProxySettings>("/settings/juliang-proxy"),
   updateJuliangProxySettings: (settings: UpdateJuliLangProxySettingsRequest) =>
     request<JuliLangProxySettings>("/settings/juliang-proxy", {
@@ -376,6 +389,52 @@ export interface ChannelRuntimeStatus {
 
 export interface ChannelRuntimeActionResponse extends ChannelRuntimeStatus {
   status: string;
+}
+
+// --- Plugins (MCP servers & skills) ---
+
+export interface MCPServerInfo {
+  name: string;
+  enabled: boolean;
+  transport: string;
+  command: string;
+  args: string[];
+  url: string;
+  env_keys: string[];
+  header_keys: string[];
+  has_auth: boolean;
+  tool_timeout: number;
+  init_timeout: number | null;
+  enabled_tools: string[];
+  valid: boolean;
+  error?: string | null;
+}
+
+export interface SkillInfo {
+  name: string;
+  description: string;
+  category: string;
+  source: "bundled" | "user";
+  enabled: boolean;
+  dir_path: string;
+}
+
+export interface PluginsResponse {
+  config_path: string;
+  skills_state_path: string;
+  mcp: MCPServerInfo[];
+  skills: SkillInfo[];
+}
+
+export interface UpdateMCPServerRequest {
+  enabled?: boolean;
+  type?: "stdio" | "sse" | "streamableHttp" | null;
+  command?: string;
+  args?: string[];
+  url?: string;
+  tool_timeout?: number;
+  init_timeout?: number | null;
+  enabled_tools?: string[];
 }
 
 export interface ChannelPairingCommandRequest {

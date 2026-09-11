@@ -212,6 +212,10 @@ from src.api.settings_routes import (  # noqa: F401, E402
     _load_llm_providers,
 )
 
+# --- Plugins (MCP servers & skills, Web UI 插件 page) ---
+from src.api.plugins_routes import register_plugins_routes  # noqa: E402
+register_plugins_routes(app)
+
 # --- Uploads ---
 from src.api.uploads_routes import register_uploads_routes  # noqa: E402
 register_uploads_routes(app)

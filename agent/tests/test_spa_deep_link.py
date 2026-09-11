@@ -20,6 +20,7 @@ class TestSpaHtmlRouteMatcher:
         "path",
         [
             "/correlation",        # Correlation page
+            "/plugins",            # Plugins page (shadows GET /plugins API)
             "/runs/abc",           # RunDetail (no trailing slash)
             "/runs/abc-123",       # RunDetail with dashes
             "/runs/abc/",          # RunDetail (trailing slash)
@@ -42,6 +43,8 @@ class TestSpaHtmlRouteMatcher:
             "/api",
             "/skills",
             "/correlation/extra",   # only the bare /correlation page exists
+            "/plugins/mcp/svc",     # plugins API subpaths
+            "/plugins/skills/skill",
         ],
     )
     def test_api_only_paths_do_not_match(self, path: str) -> None:

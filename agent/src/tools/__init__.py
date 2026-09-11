@@ -173,6 +173,16 @@ def build_registry(
 
         for server_name, server_config in agent_config.mcp_servers.items():
             try:
+                # Operator-level switch (Web UI 插件 page / agent.json
+                # ``mcpServers.<name>.enabled``): a disabled server keeps its
+                # config but contributes no tools.
+                if not getattr(server_config, "enabled", True):
+                    skip_msg = f"MCP server '{server_name}' is disabled by config — skipped"
+                    logger.info(skip_msg)
+                    if warn_callback is not None:
+                        warn_callback(skip_msg)
+                    continue
+
                 # Live brokers (e.g. Robinhood) gate their order-placing tools
                 # behind the mandate + kill switch; reads stay plain (read-only).
                 # Detection is by config key OR URL host, so a live-broker URL
@@ -327,7 +337,8 @@ def _prune_agent_config_for_swarm_tools(
     selected_servers = {
         server_name: server_config
         for server_name, server_config in agent_config.mcp_servers.items()
-        if any(
+        if getattr(server_config, "enabled", True)
+        and any(
             tool_name.startswith(f"mcp_{local_server_names[server_name]}_")
             for tool_name in requested_mcp_tool_names
         )
