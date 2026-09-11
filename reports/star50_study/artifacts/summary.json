@@ -2,12 +2,12 @@
  "star_code": "000688.SH",
  "window": {
   "start": "2020-07-01",
-  "end": "2026-09-08",
-  "n_days": 1504
+  "end": "2026-09-10",
+  "n_days": 1506
  },
  "drop_days": {
   "count": 260,
-  "share_pct": 17.29
+  "share_pct": 17.26
  },
  "by_year": {
   "2020": {
@@ -57,8 +57,8 @@
   "multi_day": 56
  },
  "fwd_after_drop_days": {
-  "fwd_1d_median": 0.13,
-  "fwd_5d_median": 0.01,
+  "fwd_1d_median": 0.12,
+  "fwd_5d_median": -0.03,
   "fwd_20d_median": -0.62,
   "fwd_5d_median_baseline_all_days": -0.24
  },
@@ -71,11 +71,11 @@
  "model_calibration": {
   "p_next5_bigdrop_all_days": {
    "pct": 56.6,
-   "n": 1504
+   "n": 1506
   },
   "p_next5_bigdrop_below_ma60": {
-   "pct": 48.1,
-   "n": 828
+   "pct": 48.0,
+   "n": 830
   },
   "p_next5_bigdrop_hot_mom20gt10_volratio12": {
    "pct": 85.2,
@@ -86,8 +86,8 @@
    "n": 98
   },
   "p_next5_bigdrop_two_down_days": {
-   "pct": 54.1,
-   "n": 386
+   "pct": 53.9,
+   "n": 388
   },
   "p_next5_bigdrop_calm_regime": {
    "pct": 50.0,
