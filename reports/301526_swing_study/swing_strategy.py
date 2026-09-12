@@ -348,24 +348,33 @@ def backtest(d: pd.DataFrame, target: pd.Series, *, initial: float = 1_000_000.0
 
 # ═══════════════════════════ 适用性体检 ═══════════════════════════
 
-def suitability(d: pd.DataFrame, p: Params | None = None, preset: str = "balanced") -> dict:
+def suitability(d: pd.DataFrame, p: Params | None = None,
+                preset: str = "balanced") -> dict:
     """把规则套到目标标的上, 判断它是否适合本策略。
 
-    捕获率 = 策略收益 / 买入持有收益。20 只同类标的实测:
-      >0.7 适配 / 0.4~0.7 只当风控层 / <0.4 别用趋势过滤(见 REPORT 12.4)
+    **判定口径固定为"纯趋势"(trend_only), 与 preset 参数无关** —— REPORT 第 12 节的
+    20 只标的测试与阈值(>0.7 适配 / 0.4~0.7 只作风控 / <0.4 不适用)就是按纯趋势口径标定的,
+    必须同口径才可比。不用含先手层的配置判定, 原因是先手层在多数标的上贡献≈0(近似抛硬币),
+    算进去会掩盖"趋势结构本身是否适配"这个真正的判断对象。
+
+    preset 只决定"参考"列算哪个配置(默认 balanced, 即你实际会交易的那套)。
     """
     d = build_features(d)
-    pos, _ = target_position(d, p, preset)
-    strat = backtest(d, pos)["metrics"]
     bh = backtest(d, pd.Series(1.0, index=d.index))["metrics"]
-    cap = strat["total_return_pct"] / bh["total_return_pct"] if bh["total_return_pct"] > 0 else np.nan
+    core = backtest(d, target_position(d, p, "trend_only")[0])["metrics"]
+    ref = backtest(d, target_position(d, p, preset)[0])["metrics"]
+    bhr = bh["total_return_pct"]
+    cap = core["total_return_pct"] / bhr if bhr > 0 else np.nan
     verdict = ("适配: 可用完整配置(含先手层)" if cap > 0.7 else
                "仅作风控层: 收益让渡换回撤控制" if cap >= 0.4 else
                "不适用: 改用 满仓+2.0~2.5×ATR追踪, 或长期持有")
-    return {"捕获率": cap, "策略收益%": strat["total_return_pct"],
-            "持有收益%": bh["total_return_pct"], "策略回撤%": strat["max_drawdown_pct"],
-            "持有回撤%": bh["max_drawdown_pct"], "Sharpe": strat["sharpe"],
-            "交易数": strat["n_trades"], "结论": verdict}
+    return {"捕获率(纯趋势,判定用)": cap, "策略收益%": core["total_return_pct"],
+            "持有收益%": bhr, "策略回撤%": core["max_drawdown_pct"],
+            "持有回撤%": bh["max_drawdown_pct"], "Sharpe": core["sharpe"],
+            "交易数": core["n_trades"],
+            f"参考[{preset}]收益%": ref["total_return_pct"],
+            f"参考[{preset}]捕获率": ref["total_return_pct"] / bhr if bhr > 0 else np.nan,
+            "结论": verdict}
 
 
 # ═══════════════════════════ CLI ═══════════════════════════
@@ -427,9 +436,11 @@ def main() -> None:
             except Exception as exc:  # noqa: BLE001
                 print(f"  {f.stem}: {type(exc).__name__}: {exc}")
         t = pd.DataFrame(rows)
-        cols = ["标的", "捕获率", "策略收益%", "持有收益%", "策略回撤%", "持有回撤%", "Sharpe", "交易数", "结论"]
+        capcol = "捕获率(纯趋势,判定用)"
+        cols = ["标的", capcol, "策略收益%", "持有收益%", "策略回撤%", "持有回撤%",
+                "Sharpe", "交易数", "结论"]
         print(t[cols].round(2).to_string(index=False))
-        print(f"\n捕获率中位 {t['捕获率'].median():.2f} | 回撤改善 "
+        print(f"\n捕获率中位(纯趋势) {t[capcol].median():.2f} | 回撤改善 "
               f"{(t['策略回撤%'] > t['持有回撤%']).sum()}/{len(t)} | "
               f"收益改善 {(t['策略收益%'] > t['持有收益%']).sum()}/{len(t)}")
         return
