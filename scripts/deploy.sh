@@ -119,7 +119,7 @@ EXCLUDES=(
 # 目录位置由服务用户的 HOME 决定(本机为 /var/lib/vibe), 故在服务器端推导而非硬编码。
 install_user_skills() {
   [ -d "$ROOT/scripts/user-skills" ] || { log "没有 scripts/user-skills/, 跳过"; return 0; }
-  log "Installing user skills → <$DEPLOY_USER 的 HOME>/.vibe-trading/skills/user"
+  log "Installing user skills → <$DEPLOY_SERVICE_USER 的 HOME>/.vibe-trading/skills/user"
   # 先传到临时目录, 再在服务器端落到目标(目标路径依赖服务用户的 HOME)
   if [ "$DRY_RUN" -eq 1 ]; then
     rsync -az --delete --dry-run -e "ssh ${SSH_OPTS[*]}" "$ROOT/scripts/user-skills/" "$SSH_DEST:/tmp/vibe-user-skills/"
@@ -144,8 +144,9 @@ restart_services() {
   log "Waiting for MCP on port $DEPLOY_MCP_PORT..."
   remote_exec "for i in \$(seq 1 40); do ss -ltn 2>/dev/null | grep -q ':$DEPLOY_MCP_PORT ' && echo 'mcp listening' && break; sleep 3; done"
   remote_exec "$DEPLOY_APP_DIR/venv/bin/vibe-trading --version"
-  # 技能数量自检: 技能目录变动后数量应同步(仅提示, 不阻断)
-  remote_exec "$DEPLOY_APP_DIR/venv/bin/python -c \"import sys; sys.path.insert(0,'$DEPLOY_APP_DIR/agent'); from src.agent.skills import SkillsLoader; s=SkillsLoader(); print('skills loaded:', len(s.skills))\""
+  # 技能自检: 必须以**服务用户身份**执行 —— 用户技能目录由其 HOME 决定,
+  # 以 root 跑会漏掉用户技能(曾因此误报 87 而非 90)。
+  remote_exec "su -s /bin/bash $DEPLOY_SERVICE_USER -c '$DEPLOY_APP_DIR/venv/bin/python $DEPLOY_APP_DIR/scripts/check_skills.py' | head -4"
 }
 
 do_deploy() {
