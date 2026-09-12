@@ -1,0 +1,7 @@
+{
+  "as_of": "2026-09-11",
+  "close": 30.69,
+  "target_position": 0.0,
+  "above_ma20": true,
+  "ma20_gt_ma60": false
+}
