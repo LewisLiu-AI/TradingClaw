@@ -6,7 +6,7 @@
 #   backup → rsync code → fix ownership → pip install → restart systemd → verify health
 #
 # Usage:
-#   ./scripts/deploy.sh                    full deploy (builds frontend, updates deps, restarts)
+#   ./scripts/deploy.sh                    full deploy (builds frontend, updates deps, restarts both services)
 #   ./scripts/deploy.sh --dry-run          print every step without executing anything
 #   ./scripts/deploy.sh --skip-build       reuse existing frontend/dist (no npm run build)
 #   ./scripts/deploy.sh --skip-deps        do not re-run pip install on the server
@@ -19,6 +19,7 @@
 #   DEPLOY_HOST=47.100.42.183   DEPLOY_USER=root   DEPLOY_PORT=22
 #   DEPLOY_APP_DIR=/opt/vibe-trading   DEPLOY_SERVICE=vibe-trading
 #   DEPLOY_BACKUP_DIR=/opt/backups   DEPLOY_HTTP_PORT=18688
+#   DEPLOY_MCP_SERVICE=vibe-trading-mcp   DEPLOY_MCP_PORT=8900
 #   PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
 #
 # Auth: prefers SSH key (run ./scripts/deploy.sh --setup-key once); falls back to password prompt.
@@ -31,6 +32,8 @@ DEPLOY_APP_DIR="${DEPLOY_APP_DIR:-/opt/vibe-trading}"
 DEPLOY_SERVICE="${DEPLOY_SERVICE:-vibe-trading}"
 DEPLOY_BACKUP_DIR="${DEPLOY_BACKUP_DIR:-/opt/backups}"
 DEPLOY_HTTP_PORT="${DEPLOY_HTTP_PORT:-18688}"
+DEPLOY_MCP_SERVICE="${DEPLOY_MCP_SERVICE:-vibe-trading-mcp}"
+DEPLOY_MCP_PORT="${DEPLOY_MCP_PORT:-8900}"
 PIP_INDEX_URL="${PIP_INDEX_URL:-https://mirrors.aliyun.com/pypi/simple/}"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -105,6 +108,23 @@ EXCLUDES=(
   --exclude='tools/report_audit.py'
 )
 
+# 重启两个服务并等待健康。
+# 为什么必须重启 MCP: mcp_server.py 的 ``_skills_loader`` 是**惰性单例**,
+# 进程首次用到技能后才缓存; 技能目录变动后不重启则一直读旧列表。
+# (HTTP /skills 路由是每次请求重建 loader, 不需要重启也能看到新技能。)
+restart_services() {
+  log "Restarting $DEPLOY_SERVICE + $DEPLOY_MCP_SERVICE..."
+  remote_exec "systemctl restart $DEPLOY_SERVICE"
+  remote_exec "systemctl list-unit-files --type=service | grep -q '^$DEPLOY_MCP_SERVICE' && systemctl restart $DEPLOY_MCP_SERVICE || echo 'skip: $DEPLOY_MCP_SERVICE 不存在'"
+  log "Waiting for health on port $DEPLOY_HTTP_PORT..."
+  remote_exec "for i in \$(seq 1 40); do curl -sf http://127.0.0.1:$DEPLOY_HTTP_PORT/health && echo && break; sleep 3; done"
+  log "Waiting for MCP on port $DEPLOY_MCP_PORT..."
+  remote_exec "for i in \$(seq 1 40); do ss -ltn 2>/dev/null | grep -q ':$DEPLOY_MCP_PORT ' && echo 'mcp listening' && break; sleep 3; done"
+  remote_exec "$DEPLOY_APP_DIR/venv/bin/vibe-trading --version"
+  # 技能数量自检: 技能目录变动后数量应同步(仅提示, 不阻断)
+  remote_exec "$DEPLOY_APP_DIR/venv/bin/python -c \"import sys; sys.path.insert(0,'$DEPLOY_APP_DIR/agent'); from src.agent.skills import SkillsLoader; s=SkillsLoader(); print('skills loaded:', len(s.skills))\""
+}
+
 do_deploy() {
   # 0. Pre-flight: refuse to silently deploy uncommitted tracked changes.
   if [ "$FORCE" -eq 0 ]; then
@@ -146,12 +166,8 @@ do_deploy() {
     remote_exec "cd $DEPLOY_APP_DIR && su -s /bin/bash vibe -c 'venv/bin/pip install -e . -i $PIP_INDEX_URL --timeout 60 --retries 5'"
   fi
 
-  # 6. Restart and wait for health (startup takes ~1 min on this box).
-  log "Restarting $DEPLOY_SERVICE..."
-  remote_exec "systemctl restart $DEPLOY_SERVICE"
-  log "Waiting for health on port $DEPLOY_HTTP_PORT..."
-  remote_exec "for i in \$(seq 1 40); do curl -sf http://127.0.0.1:$DEPLOY_HTTP_PORT/health && echo && break; sleep 3; done"
-  remote_exec "$DEPLOY_APP_DIR/venv/bin/vibe-trading --version"
+  # 6. Restart both services and wait for health (startup takes ~1 min on this box).
+  restart_services
   log "Deploy complete."
 }
 
@@ -167,10 +183,8 @@ do_rollback() {
   fi
   log "Rolling back to $backup"
   remote_exec "test -f '$backup'"
-  remote_exec "cd /opt && tar xzf '$backup' && chown -R vibe:vibe vibe-trading && cd $DEPLOY_APP_DIR && su -s /bin/bash vibe -c 'venv/bin/pip install -e . -i $PIP_INDEX_URL --timeout 60 --retries 5' && systemctl restart $DEPLOY_SERVICE"
-  log "Waiting for health on port $DEPLOY_HTTP_PORT..."
-  remote_exec "for i in \$(seq 1 40); do curl -sf http://127.0.0.1:$DEPLOY_HTTP_PORT/health && echo && break; sleep 3; done"
-  remote_exec "$DEPLOY_APP_DIR/venv/bin/vibe-trading --version"
+  remote_exec "cd /opt && tar xzf '$backup' && chown -R vibe:vibe vibe-trading && cd $DEPLOY_APP_DIR && su -s /bin/bash vibe -c 'venv/bin/pip install -e . -i $PIP_INDEX_URL --timeout 60 --retries 5'"
+  restart_services
   log "Rollback complete."
 }
 

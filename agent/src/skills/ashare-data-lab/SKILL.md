@@ -13,7 +13,7 @@ description: "A股研究数据采集与数据验证：抓行情/融资融券/资
 
 脚本目录（本 skill 自带，取存在者）：
 - 开发机：`~/.codex/skills/ashare-data-lab/scripts/`（或 `~/.zcode/skills/ashare-data-lab/`）
-- 生产：`/opt/vibe-trading/agent/skills/ashare-data-lab/scripts/`
+- 生产：`/opt/vibe-trading/agent/src/skills/ashare-data-lab/scripts/`
 
 下称 `$SK`。**解释器**：生产用 `/opt/vibe-trading/venv/bin/python`（已含 pandas/numpy/requests），
 或 `python3.11`；**不要用系统的 python3（3.6.8）** —— 脚本用了 3.7+ 语法。

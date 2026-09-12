@@ -78,7 +78,7 @@ python swing_strategy.py --batch data/peers/ --market data/idx_cyb.csv --check
 |---|---|---|
 | 本目录 | `/Users/lewis/code/TradingClaw/reports/301526_swing_study` | `/opt/vibe-trading/reports/301526_swing_study` |
 | Python | `.venv/bin/python` (3.12) | `/opt/vibe-trading/venv/bin/python`（或 `python3.11`） |
-| skill | `~/.codex/skills/ashare-data-lab`（软链到 `~/.zcode/skills/`） | `/opt/vibe-trading/agent/skills/ashare-data-lab` + `/root/.zcode/skills/ashare-data-lab` |
+| skill | `~/.codex/skills/ashare-data-lab`（软链到 `~/.zcode/skills/`） | `/opt/vibe-trading/agent/src/skills/ashare-data-lab` + `/root/.zcode/skills/ashare-data-lab` |
 
 ⚠️ 生产系统的 `python3` 是 **3.6.8**，本目录脚本用了 3.7+ 语法（`from __future__ import annotations`），
 **必须用 venv 或 python3.11**。
