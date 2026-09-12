@@ -25,6 +25,8 @@ AGENT = ROOT / "agent"
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--name", default=None, help="只打印匹配的技能")
+    ap.add_argument("--summary", action="store_true",
+                    help="精简输出: 身份 + 两个目录 + 数量 + 用户技能列表(供部署自检)")
     args = ap.parse_args()
 
     sys.path.insert(0, str(AGENT))
@@ -40,6 +42,12 @@ def main() -> None:
 
     loader = SkillsLoader()
     skills = loader.skills
+    user_dir = USER_SKILLS_DIR
+    if args.summary:
+        us = [s for s in skills if s.dir_path and user_dir in s.dir_path.parents]
+        print(f"实际加载技能数: {len(skills)}  (用户技能 {len(us)}: "
+              f"{', '.join(s.name for s in us) or '无'})")
+        return
     print(f"\n实际加载技能数: {len(skills)}")
     if args.name:
         hits = [s for s in skills if args.name in s.name]
@@ -50,7 +58,6 @@ def main() -> None:
             print(f"  {s.name}\n    来源: {s.dir_path}")
         return
 
-    user_dir = USER_SKILLS_DIR
     for s in skills:
         src = "user" if s.dir_path and user_dir in s.dir_path.parents else "bundled"
         flag = " ←" if src == "user" else ""

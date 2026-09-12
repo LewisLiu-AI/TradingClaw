@@ -146,7 +146,7 @@ restart_services() {
   remote_exec "$DEPLOY_APP_DIR/venv/bin/vibe-trading --version"
   # 技能自检: 必须以**服务用户身份**执行 —— 用户技能目录由其 HOME 决定,
   # 以 root 跑会漏掉用户技能(曾因此误报 87 而非 90)。
-  remote_exec "su -s /bin/bash $DEPLOY_SERVICE_USER -c '$DEPLOY_APP_DIR/venv/bin/python $DEPLOY_APP_DIR/scripts/check_skills.py' | head -4"
+  remote_exec "su -s /bin/bash $DEPLOY_SERVICE_USER -c '$DEPLOY_APP_DIR/venv/bin/python $DEPLOY_APP_DIR/scripts/check_skills.py --summary'"
 }
 
 do_deploy() {
