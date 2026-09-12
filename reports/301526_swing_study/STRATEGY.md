@@ -103,6 +103,56 @@ python swing_strategy.py --csv data/px_qfq.csv --market data/idx_cyb.csv --signa
 **回归校验**：`balanced` 预设应给出 966.47% / -32.41% / Sharpe 1.97 / 33 笔。
 任何改动后先跑这条，数字不对就是改错了。
 
+
+## 5.5 两种运行方式（都已在生产验证）
+
+**方式 A：独立运行**（推荐日常用，零依赖配置）
+
+```bash
+cd /opt/vibe-trading/reports/301526_swing_study
+PY=/opt/vibe-trading/venv/bin/python
+$PY swing_strategy.py --csv data/px_qfq.csv --market data/idx_cyb.csv --signal   # 取信号
+$PY swing_strategy.py --csv data/px_qfq.csv --market data/idx_cyb.csv --preset balanced
+```
+
+也可以当模块 import（自带特征/回测/体检，无外部依赖）：
+
+```python
+import swing_strategy as sw
+d   = sw.attach_market(sw.build_features(px_df), idx_cyb_close)   # ← 别漏 attach_market
+pos = sw.target_position(d, preset="balanced")[0]
+m   = sw.backtest(d, pos)["metrics"]
+```
+
+⚠️ **必须挂大盘序列**：缺 `mkt_ret5` 时 B1 的"大盘同步走弱"条件会被跳过，策略行为改变
+（同一标的 966%/33 笔 → 746%/42 笔）。模块会用 `RuntimeWarning` 提示，不要忽略。
+
+**方式 B：走仓库自带回测框架**（用于和其它策略统一评测）
+
+```bash
+# 前置 1) 数据桥：把本地 CSV 注册给 local loader
+cat ~/.vibe-trading/data-bridge/config.yaml
+#   sources:
+#     - {symbol: "301526.SZ", type: csv, path: ".../data/px_qfq.csv", date_format: "%Y-%m-%d"}
+#     - {symbol: "399006.SZ", type: csv, path: ".../data/idx_cyb.csv", date_format: "%Y-%m-%d"}
+# 前置 2) run 目录在允许根内
+cd <repo>/agent
+VIBE_TRADING_ALLOWED_RUN_ROOTS=<repo>/reports \
+  <repo>/.venv/bin/python -m backtest.runner <repo>/reports/301526_swing_study/run
+```
+
+**独立验证结果**（框架口径 vs 本策略自建引擎，互为交叉校验）：
+
+| 指标 | 框架 runner | 自建引擎 |
+|---|---|---|
+| 交易数 | **33** | 33 |
+| 胜率 | **57.58%** | 57.58% |
+| 最大回撤 | **-32.40%** | -32.41% |
+| 总收益 | 975.9% | 966.5% |
+
+收益的 9pp 差异来自成本与成交约定（框架与自建引擎的滑点/手续费时点不同）；
+交易数、胜率、回撤三项完全一致 → 策略实现可信。
+
 ## 6. 已知局限
 
 - 单标的、556 个交易日、纯趋势版仅 5 笔交易 —— 统计量置信区间很宽。

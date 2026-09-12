@@ -198,6 +198,14 @@ def target_position(d: pd.DataFrame, p: Params | None = None,
         raise ValueError(f"未知预设 {preset}; 可选 {list(PRESETS)}")
     p = Params(**{**asdict(p), **PRESETS[preset]})
     s = entry_signals(d, p)
+    # 缺大盘序列时 B1 的"大盘同步走弱"条件会降级为恒真 —— 这会让交易变多、结果不同
+    # (实测同一标的 966%/33笔 → 746%/42笔)。必须显式提示, 不能静默换一套行为。
+    if "mkt_ret5" not in d.columns and p.dip_set != "none":
+        import warnings
+        warnings.warn(
+            "缺少大盘序列(mkt_ret5): B1 的\"大盘同步走弱\"条件被跳过, 策略行为已改变。"
+            "请先调用 attach_market(d, 大盘收盘价序列), 否则结果不可与报告数字对比。",
+            RuntimeWarning, stacklevel=2)
     c, ma20, ma60 = d["close"], d["ma20"], d["ma60"]
     if dip_mask is None:
         _map = {"A": "A_pullback", "B1": "B1_panic", "B2": "B2_crash",
