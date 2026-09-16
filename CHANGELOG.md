@@ -11,6 +11,13 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Scheduled-research results delivered to Feishu were truncated at 4,000
+  characters** ("…(已截断)"). The delivery step no longer truncates; the
+  Feishu channel instead splits oversized content into multiple interactive
+  cards so each stays under the API's ~30 KB card-payload limit (long
+  markdown is split at line boundaries, giant tables are split by rows with
+  headers preserved).
+
 ## [0.1.11] — 2026-07-11
 
 ### Added

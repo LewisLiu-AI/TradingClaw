@@ -140,6 +140,9 @@ async def _deliver_scheduled_result(host, content: str, job) -> None:
     ``["feishu", "weixin"]``). For each target, every chat bound to that channel
     in the channel runtime's session map receives the result. Best effort: a
     missing channel runtime or an empty session map simply skips delivery.
+
+    The full result is delivered untruncated — channels own message-size
+    handling (e.g. the Feishu channel splits oversized cards).
     """
     config = job.config if isinstance(job.config, dict) else {}
     channels = config.get("channels") or []
@@ -157,8 +160,6 @@ async def _deliver_scheduled_result(host, content: str, job) -> None:
         return
     prompt_preview = job.prompt.strip().replace("\n", " ")[:40]
     payload = f"📊 定时研究结果 · {prompt_preview}\n\n{text}"
-    if len(payload) > 4000:
-        payload = payload[:4000] + "…(已截断)"
 
     session_map = getattr(runtime, "_session_map", None) or {}
     for channel_name in channels:

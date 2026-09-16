@@ -1130,6 +1130,138 @@ class FeishuChannel(BaseChannel):
             groups.append(current)
         return groups or [[]]
 
+    # Feishu rejects interactive messages whose serialized JSON payload
+    # exceeds ~30 KB (text/post allow 150 KB). Keep headroom for the card
+    # envelope so oversized reports split into several cards instead of
+    # failing to send outright.
+    _CARD_JSON_MAX_BYTES = 28 * 1024
+
+    @classmethod
+    def _card_payload_size(cls, elements: list[dict]) -> int:
+        """Serialized byte size of the interactive card that carries *elements*."""
+        card = {"config": {"wide_screen_mode": True}, "elements": elements}
+        return len(json.dumps(card, ensure_ascii=False).encode("utf-8"))
+
+    @staticmethod
+    def _json_escaped_size(text: str) -> int:
+        """UTF-8 byte size of *text* once embedded in a JSON string.
+
+        Must measure encoded bytes (not characters): Chinese text triples in
+        size, which is exactly the content that overflows the card limit.
+        The -2 strips the wrapping quotes json.dumps adds.
+        """
+        return len(json.dumps(text, ensure_ascii=False).encode("utf-8")) - 2
+
+    @classmethod
+    def _split_text_by_bytes(cls, text: str, max_bytes: int) -> list[str]:
+        """Split *text* into pieces each within *max_bytes* after JSON escaping.
+
+        Prefers line boundaries so paragraphs and tables stay intact; a single
+        oversized line is hard-cut at a character boundary. Pieces joined with
+        ``"\n"`` preserve all original characters.
+        """
+
+        def cost(piece: str) -> int:
+            # +2 accounts for the "\n" separator escaping added on join.
+            return cls._json_escaped_size(piece) + 2
+
+        pieces: list[str] = []
+        current: list[str] = []
+        current_cost = 0
+        for line in text.split("\n"):
+            line_cost = cost(line)
+            if current and current_cost + line_cost > max_bytes:
+                pieces.append("\n".join(current))
+                current, current_cost = [], 0
+            if line_cost > max_bytes:
+                # Hard-cut an oversized line character by character.
+                if current:
+                    pieces.append("\n".join(current))
+                    current, current_cost = [], 0
+                buf, buf_cost = "", 0
+                for ch in line:
+                    ch_cost = cost(ch)
+                    if buf and buf_cost + ch_cost > max_bytes:
+                        pieces.append(buf)
+                        buf, buf_cost = "", 0
+                    buf += ch
+                    buf_cost += ch_cost
+                if buf:
+                    pieces.append(buf)
+                continue
+            current.append(line)
+            current_cost += line_cost
+        if current:
+            pieces.append("\n".join(current))
+        return pieces or [text]
+
+    def _split_oversized_element(self, element: dict) -> list[list[dict]]:
+        """Split a single element that alone exceeds the card payload limit."""
+        tag = element.get("tag")
+        if tag == "markdown":
+            return [
+                [{"tag": "markdown", "content": piece}]
+                for piece in self._split_text_by_bytes(
+                    element.get("content", ""), self._CARD_JSON_MAX_BYTES - 512
+                )
+            ]
+        if tag == "table" and isinstance(element.get("rows"), list):
+            columns = element.get("columns", [])
+            skeleton = {"tag": "table", "page_size": 1, "columns": columns, "rows": []}
+            budget = self._CARD_JSON_MAX_BYTES - self._card_payload_size([skeleton]) - 64
+            chunks: list[list[dict]] = []
+            rows: list = []
+            rows_cost = 0
+            for row in element["rows"]:
+                # +2 covers the ", " separator json.dumps emits between rows.
+                cost = len(json.dumps(row, ensure_ascii=False).encode("utf-8")) + 2
+                if rows and rows_cost + cost > budget:
+                    chunks.append([{**skeleton, "page_size": len(rows) + 1, "rows": rows}])
+                    rows, rows_cost = [], 0
+                rows.append(row)
+                rows_cost += cost
+            if rows:
+                chunks.append([{**skeleton, "page_size": len(rows) + 1, "rows": rows}])
+            return chunks or [[skeleton]]
+        # Unknown oversized element: send alone (best effort) rather than drop.
+        self.logger.warning(
+            "card element tag={} exceeds payload limit and cannot be split", tag
+        )
+        return [[element]]
+
+    def _split_elements_by_size(self, elements: list[dict]) -> list[list[dict]]:
+        """Split element groups so each card's serialized JSON stays under the limit.
+
+        Feishu rejects oversized interactive messages at the API level, which
+        would silently drop the whole result; splitting keeps long content
+        intact across several sequential cards.
+        """
+        limit = self._CARD_JSON_MAX_BYTES
+        groups: list[list[dict]] = []
+        current: list[dict] = []
+        for element in elements:
+            if self._card_payload_size(current + [element]) <= limit:
+                current.append(element)
+                continue
+            if current:
+                groups.append(current)
+                current = []
+            if self._card_payload_size([element]) <= limit:
+                current = [element]
+            else:
+                groups.extend(self._split_oversized_element(element))
+        if current:
+            groups.append(current)
+        return groups or [[]]
+
+    def _split_card_elements(self, elements: list[dict]) -> list[list[dict]]:
+        """Element groups ready to send: at most one table per card (API error
+        11310) and each card within the payload size limit."""
+        groups: list[list[dict]] = []
+        for group in self._split_elements_by_table_limit(elements):
+            groups.extend(self._split_elements_by_size(group))
+        return groups or [[]]
+
     def _split_headings(self, content: str) -> list[dict]:
         """Split content by headings, converting headings to div elements."""
         protected = content
@@ -1869,7 +2001,7 @@ class FeishuChannel(BaseChannel):
                     "Streaming card {} final update failed, falling back to regular card",
                     buf.card_id,
                 )
-            for chunk in self._split_elements_by_table_limit(
+            for chunk in self._split_card_elements(
                 self._build_card_elements(buf.text)
             ):
                 card = json.dumps(
@@ -2091,7 +2223,7 @@ class FeishuChannel(BaseChannel):
                 else:
                     # Complex / long content – send as interactive card
                     elements = self._build_card_elements(msg.content)
-                    for chunk in self._split_elements_by_table_limit(elements):
+                    for chunk in self._split_card_elements(elements):
                         card = {"config": {"wide_screen_mode": True}, "elements": chunk}
                         await loop.run_in_executor(
                             None,

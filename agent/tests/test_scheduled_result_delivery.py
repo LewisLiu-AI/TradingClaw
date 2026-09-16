@@ -125,6 +125,20 @@ def test_deliver_scheduled_result_multi_channel() -> None:
     assert len(runtime.bus.sent) == 2
 
 
+def test_deliver_scheduled_result_does_not_truncate_long_content() -> None:
+    runtime = _FakeRuntime({"feishu:ou_123": "sess-f"})
+    long_text = "详细的盘前分析结论，逐项展开。" * 2000
+    asyncio.run(
+        scheduled_routes._deliver_scheduled_result(
+            _fake_host(runtime), long_text, _job(channels=["feishu"])
+        )
+    )
+    sent = runtime.bus.sent
+    assert len(sent) == 1
+    assert "已截断" not in sent[0].content
+    assert long_text in sent[0].content
+
+
 def test_deliver_scheduled_result_skips_without_channels() -> None:
     runtime = _FakeRuntime({"feishu:ou_123": "sess-f"})
     asyncio.run(
