@@ -47,12 +47,10 @@ def load_data():
                 "start": row["start"],
                 "end": row["end"],
             })
-    # index close series
+    # index close series（唯一数据源：仓库内 star50_index.csv；历史 /tmp 副本已废弃）
     index_series = []
-    star_csv = "/tmp/star50_index.csv"
-    alt = os.path.join(BASE, "star50_index.csv")
-    path = star_csv if os.path.exists(star_csv) else alt
-    with open(path) as f:
+    index_csv = os.path.join(BASE, "star50_index.csv")
+    with open(index_csv) as f:
         for row in csv.DictReader(f):
             index_series.append([row["date"], float(row["close"])])
     # attribution

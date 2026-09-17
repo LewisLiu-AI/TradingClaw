@@ -37,7 +37,7 @@ wind `get_stock_fundamentals`、隔夜用 Yahoo chart API）。⚠️ vibe-tradi
 
 1. 取当日指数 OHLCV：`curl -s "https://qt.gtimg.cn/q=sh000688" | iconv -f GBK -t UTF-8`，
    按 `~` 分割：[30]时间戳、[5]开、[33]高、[34]低、[3]收、[6]量（已实测，勿改索引）。
-2. 若日期新于 `$ST/star50_index.csv` 末行 → 追加一行，**并同步 `/tmp/star50_index.csv`**（build_report 优先读它）。
+2. 若日期新于 `$ST/star50_index.csv` 末行 → 追加一行（build_report.py 只读仓库内 CSV，无副本同步）。
 3. 重算底稿：`python3 build_artifacts.py`（干跑核对）→ `python3 build_artifacts.py --write`。
 
 ## 任务 C：出现新大跌日（单日 ≤-1.5%）
