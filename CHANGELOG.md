@@ -7,6 +7,18 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **AI-Berkshire skill suite installed as user skills** (21 skills from
+  [xbtlin/ai-berkshire](https://github.com/xbtlin/ai-berkshire) + a `berkshire`
+  router skill). Each skill carries a TradingClaw data-acceleration layer:
+  market/financial/SEC/research/news/flow lookups prefer the built-in data
+  tools (`get_market_data`, `get_financial_statements`, `get_sec_filings`,
+  `get_research_reports`, `financial_rigor`, …) with the skill's original
+  web-search flow as fallback; reports are returned in full Markdown so the
+  Feishu channel renders them as (auto-sharded) interactive cards. Saying
+  "伯克希尔" in a chat lists all capabilities. User skills shadow the bundled
+  English translations of the same five names. Regenerate via
+  `scripts/build_berkshire_skills.py` when upstream updates.
+
 ### Changed
 
 ### Fixed
