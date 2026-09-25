@@ -127,5 +127,18 @@
    "https://m.nbd.com.cn/articles/2026-08-19/4546299.html"
   ],
   "confidence": "高"
+ },
+ {
+  "episode_id": 92,
+  "dates": "2026-09-24",
+  "cum_drop": -2.35,
+  "category": "海外传导 | 技术性回调",
+  "catalyst": "美债利率飙升+加息预期，节前避险缩量",
+  "detail": "隔夜美债收益率飙升（美8月CPI公布前夜、加息预期升温，油价大涨强化通胀定价）+美股科技下挫（纳指-1.13%、费半-1.23%）压缩高久期高估值成长股（科创50半导体权重超79%）；叠加中秋节前最后交易日避险与获利兑现——融资盘降仓、公募Q3调仓，前期领涨的科技板块兑现压力集中释放；全天缩量1.66万亿、收于全天最低-2.35%，沪指失守3900点、超4300股下跌",
+  "sources": [
+   "https://t.wind.com.cn/mobwftweb/M/news.html?share=wechat&show=wft&code=1343E9EBAED1&newsopenstyle=&lan=cn&device=pc&gateway=news&related=true&terminaltype=COM.WINDRAG&version=&useless=0.056828",
+   "https://t.wind.com.cn/mobwftweb/M/news.html?share=wechat&show=wft&code=017143F6C1EB&newsopenstyle=&lan=cn&device=pc&gateway=news&related=true&terminaltype=COM.WINDRAG&version=&useless=0.890928"
+  ],
+  "confidence": "高"
  }
 ]
