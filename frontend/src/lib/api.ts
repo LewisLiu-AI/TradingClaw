@@ -254,6 +254,10 @@ export const api = {
     request<{ status?: string }>(`/scheduled-runs/${encodeURIComponent(id)}`, {
       method: "DELETE",
     }),
+  runScheduledRun: (id: string) =>
+    request<ScheduledRunItem>(`/scheduled-runs/${encodeURIComponent(id)}/run`, {
+      method: "POST",
+    }),
   listAvailableDeliveryChannels: () =>
     request<DeliveryChannel[]>("/scheduled-runs/available-channels"),
 };

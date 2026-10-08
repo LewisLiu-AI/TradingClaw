@@ -4,6 +4,7 @@ import {
   CheckCircle2,
   Loader2,
   Pencil,
+  Play,
   Plus,
   RefreshCw,
   Trash2,
@@ -29,9 +30,12 @@ export function Scheduled() {
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [runningId, setRunningId] = useState<string | null>(null);
 
-  async function load() {
-    setLoading(true);
+  async function load(silent = false) {
+    if (!silent) {
+      setLoading(true);
+    }
     setError(null);
     try {
       const [jobsList, channelList] = await Promise.all([
@@ -50,6 +54,15 @@ export function Scheduled() {
   useEffect(() => {
     void load();
   }, []);
+
+  const hasRunningJob = jobs.some((job) => job.status === "running");
+  useEffect(() => {
+    // While a run is in flight, quietly refresh so its status badge moves
+    // to completed/failed without a manual reload.
+    if (!hasRunningJob) return;
+    const timer = setInterval(() => void load(true), 5000);
+    return () => clearInterval(timer);
+  }, [hasRunningJob]);
 
   function toggleChannel(name: string) {
     setSelectedChannels((prev) =>
@@ -113,6 +126,19 @@ export function Scheduled() {
     }
   }
 
+  async function runJob(id: string) {
+    setRunningId(id);
+    setError(null);
+    try {
+      await api.runScheduledRun(id);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "触发执行失败");
+    } finally {
+      setRunningId(null);
+    }
+  }
+
   function jobChannels(job: ScheduledRunItem): string[] {
     const cfg = job.config ?? {};
     const ch = cfg.channels;
@@ -134,6 +160,14 @@ export function Scheduled() {
   }
 
   function statusBadge(status: string) {
+    if (status === "running") {
+      return (
+        <span className="inline-flex items-center gap-1 text-xs">
+          <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-500" />
+          {status}
+        </span>
+      );
+    }
     const ok = status === "completed";
     return (
       <span className="inline-flex items-center gap-1 text-xs">
@@ -310,6 +344,19 @@ export function Scheduled() {
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   {statusBadge(job.status)}
+                  <button
+                    type="button"
+                    onClick={() => void runJob(job.id)}
+                    title="立即执行"
+                    disabled={runningId === job.id || job.status === "running"}
+                    className="inline-flex items-center justify-center rounded-md p-2 text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {runningId === job.id ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Play className="h-4 w-4" />
+                    )}
+                  </button>
                   <button
                     type="button"
                     onClick={() => startEdit(job)}

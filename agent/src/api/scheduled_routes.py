@@ -35,6 +35,9 @@ _SCHEDULED_RESEARCH_TRUE_VALUES = {"1", "true", "yes", "on"}
 
 _scheduled_research_store: Any = None
 _scheduled_research_executor: Any = None
+# Strong references to in-flight manual run-now tasks so they are not
+# garbage-collected before finishing (asyncio only keeps weak refs).
+_manual_run_tasks: set = set()
 
 
 def _scheduled_research_scheduler_enabled() -> bool:
@@ -83,6 +86,42 @@ async def _dispatch_scheduled_research_job(job) -> None:
         raise TimeoutError("scheduled research run produced no reply within the timeout")
 
     await _deliver_scheduled_result(host, reply.content, job)
+
+
+async def _run_scheduled_research_job_now(job) -> None:
+    """Execute one manual run-now trigger for *job* without moving its schedule.
+
+    Mirrors the executor's lifecycle bookkeeping (``RUNNING`` →
+    ``COMPLETED``/``FAILED``, ``last_run_at``) but never advances
+    ``next_run_at``: a manual trigger is an extra run and must not shift the
+    job's cadence.
+    """
+    from src.scheduled_research.models import JobStatus
+
+    try:
+        await _dispatch_scheduled_research_job(job)
+        final_status = JobStatus.COMPLETED
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        logger.error(
+            "manual scheduled research run failed for job %s", job.id, exc_info=True
+        )
+        final_status = JobStatus.FAILED
+
+    job.last_run_at = int(time.time() * 1000)
+    job.status = final_status
+    # Same completion guard as the executor: a concurrent DELETE or POST for
+    # the same id must not be overwritten by this run's bookkeeping.
+    current = _get_scheduled_research_store().get(job.id)
+    if current is not None and current.created_at == job.created_at:
+        _get_scheduled_research_store().upsert(job)
+    else:
+        logger.info(
+            "scheduled research job %s deleted or replaced during manual run; "
+            "skipping completion write",
+            job.id,
+        )
 
 
 def _scheduled_run_timeout_s() -> float:
@@ -354,6 +393,41 @@ def register_scheduled_routes(
     async def list_available_channels() -> List[Dict[str, Any]]:
         """List configured-and-enabled channels a job can deliver results to."""
         return _available_delivery_channels()
+
+    @app.post(
+        "/scheduled-runs/{job_id}/run",
+        response_model=ScheduledRunResponse,
+        status_code=status.HTTP_202_ACCEPTED,
+        dependencies=[Depends(require_auth)],
+    )
+    async def run_scheduled_run_now(job_id: str) -> ScheduledRunResponse:
+        """Trigger one immediate manual run of a scheduled research job.
+
+        Returns 202 once the run is accepted; execution continues in the
+        background and the job's ``status``/``last_run_at`` update when it
+        finishes. The persisted schedule position is left untouched.
+        """
+        from src.scheduled_research.models import JobStatus
+
+        _host_validate_path_param(job_id, "job_id")
+        job = _get_scheduled_research_store().get(job_id)
+        if job is None:
+            raise HTTPException(
+                status_code=404, detail=f"scheduled run {job_id} not found"
+            )
+        if job.status == JobStatus.RUNNING:
+            raise HTTPException(
+                status_code=409,
+                detail=f"scheduled run {job_id} is already running",
+            )
+        # Flip to RUNNING synchronously so the executor poller skips this job
+        # while the manual run is in flight.
+        job.status = JobStatus.RUNNING
+        _get_scheduled_research_store().upsert(job)
+        task = asyncio.create_task(_run_scheduled_research_job_now(job))
+        _manual_run_tasks.add(task)
+        task.add_done_callback(_manual_run_tasks.discard)
+        return ScheduledRunResponse(**job.to_dict())
 
     @app.delete(
         "/scheduled-runs/{job_id}",
