@@ -6,7 +6,7 @@
 #   backup → rsync code → fix ownership → pip install → restart systemd → verify health
 #
 # Usage:
-#   ./scripts/deploy.sh                    full deploy (builds frontend, updates deps, restarts)
+#   ./scripts/deploy.sh                    full deploy (builds frontend, updates deps, restarts both services)
 #   ./scripts/deploy.sh --dry-run          print every step without executing anything
 #   ./scripts/deploy.sh --skip-build       reuse existing frontend/dist (no npm run build)
 #   ./scripts/deploy.sh --skip-deps        do not re-run pip install on the server
@@ -19,6 +19,8 @@
 #   DEPLOY_HOST=47.100.42.183   DEPLOY_USER=root   DEPLOY_PORT=22
 #   DEPLOY_APP_DIR=/opt/vibe-trading   DEPLOY_SERVICE=vibe-trading
 #   DEPLOY_BACKUP_DIR=/opt/backups   DEPLOY_HTTP_PORT=18688
+#   DEPLOY_MCP_SERVICE=vibe-trading-mcp   DEPLOY_MCP_PORT=8900
+#   DEPLOY_SERVICE_USER=vibe   (定位该服务用户的 ~/.vibe-trading/skills/user)
 #   PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
 #
 # Auth: prefers SSH key (run ./scripts/deploy.sh --setup-key once); falls back to password prompt.
@@ -31,6 +33,10 @@ DEPLOY_APP_DIR="${DEPLOY_APP_DIR:-/opt/vibe-trading}"
 DEPLOY_SERVICE="${DEPLOY_SERVICE:-vibe-trading}"
 DEPLOY_BACKUP_DIR="${DEPLOY_BACKUP_DIR:-/opt/backups}"
 DEPLOY_HTTP_PORT="${DEPLOY_HTTP_PORT:-18688}"
+# 注意: 不要复用 DEPLOY_USER(那是 SSH 目标用户 root)。
+DEPLOY_SERVICE_USER="${DEPLOY_SERVICE_USER:-vibe}"
+DEPLOY_MCP_SERVICE="${DEPLOY_MCP_SERVICE:-vibe-trading-mcp}"
+DEPLOY_MCP_PORT="${DEPLOY_MCP_PORT:-8900}"
 PIP_INDEX_URL="${PIP_INDEX_URL:-https://mirrors.aliyun.com/pypi/simple/}"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -105,6 +111,44 @@ EXCLUDES=(
   --exclude='tools/report_audit.py'
 )
 
+# 安装操作者/用户技能到**服务用户的用户技能目录**。
+#
+# 为什么不是 agent/src/skills/(bundled): 那里是产品内置技能, 会被上游更新覆盖,
+# 也不该混进产品技能集。用户自建能力要装到服务用户的 ~/.vibe-trading/skills/user/,
+# 该目录由 SkillsLoader 先扫描, 同名时**覆盖内置技能**。
+# 目录位置由服务用户的 HOME 决定(本机为 /var/lib/vibe), 故在服务器端推导而非硬编码。
+install_user_skills() {
+  [ -d "$ROOT/scripts/user-skills" ] || { log "没有 scripts/user-skills/, 跳过"; return 0; }
+  log "Installing user skills → <$DEPLOY_SERVICE_USER 的 HOME>/.vibe-trading/skills/user"
+  # 先传到临时目录, 再在服务器端落到目标(目标路径依赖服务用户的 HOME)
+  if [ "$DRY_RUN" -eq 1 ]; then
+    rsync -az --delete --dry-run -e "ssh ${SSH_OPTS[*]}" "$ROOT/scripts/user-skills/" "$SSH_DEST:/tmp/vibe-user-skills/"
+  else
+    rsync -az --delete -e "ssh ${SSH_OPTS[*]}" "$ROOT/scripts/user-skills/" "$SSH_DEST:/tmp/vibe-user-skills/" || die "rsync user-skills failed"
+  fi
+  # 用 cp -R 追加而**不加 --delete**: 用户目录里可能还有别处安装的技能(如 star50-warning),
+  # 不能因为不在本仓库就删掉。
+  remote_exec "UHOME=\$(getent passwd $DEPLOY_SERVICE_USER | cut -d: -f6); UD=\"\$UHOME/.vibe-trading/skills/user\"; mkdir -p \"\$UD\" && cp -R /tmp/vibe-user-skills/. \"\$UD/\" && chown -R $DEPLOY_SERVICE_USER:$DEPLOY_SERVICE_USER \"\$UD\" && rm -rf /tmp/vibe-user-skills && echo '用户技能目录:' && ls \"\$UD\""
+}
+
+# 重启两个服务并等待健康。
+# 为什么必须重启 MCP: mcp_server.py 的 ``_skills_loader`` 是**惰性单例**,
+# 进程首次用到技能后才缓存; 技能目录变动后不重启则一直读旧列表。
+# (HTTP /skills 路由是每次请求重建 loader, 不需要重启也能看到新技能。)
+restart_services() {
+  log "Restarting $DEPLOY_SERVICE + $DEPLOY_MCP_SERVICE..."
+  remote_exec "systemctl restart $DEPLOY_SERVICE"
+  remote_exec "systemctl list-unit-files --type=service | grep -q '^$DEPLOY_MCP_SERVICE' && systemctl restart $DEPLOY_MCP_SERVICE || echo 'skip: $DEPLOY_MCP_SERVICE 不存在'"
+  log "Waiting for health on port $DEPLOY_HTTP_PORT..."
+  remote_exec "for i in \$(seq 1 40); do curl -sf http://127.0.0.1:$DEPLOY_HTTP_PORT/health && echo && break; sleep 3; done"
+  log "Waiting for MCP on port $DEPLOY_MCP_PORT..."
+  remote_exec "for i in \$(seq 1 40); do ss -ltn 2>/dev/null | grep -q ':$DEPLOY_MCP_PORT ' && echo 'mcp listening' && break; sleep 3; done"
+  remote_exec "$DEPLOY_APP_DIR/venv/bin/vibe-trading --version"
+  # 技能自检: 必须以**服务用户身份**执行 —— 用户技能目录由其 HOME 决定,
+  # 以 root 跑会漏掉用户技能(曾因此误报 87 而非 90)。
+  remote_exec "su -s /bin/bash $DEPLOY_SERVICE_USER -c '$DEPLOY_APP_DIR/venv/bin/python $DEPLOY_APP_DIR/scripts/check_skills.py --summary'"
+}
+
 do_deploy() {
   # 0. Pre-flight: refuse to silently deploy uncommitted tracked changes.
   if [ "$FORCE" -eq 0 ]; then
@@ -119,7 +163,7 @@ do_deploy() {
 
   # 1. Build frontend locally (server has no node/npm).
   if [ "$SKIP_BUILD" -eq 0 ]; then
-    log "Building frontend (npm run build)…"
+    log "Building frontend (npm run build)..."
     ( cd "$ROOT/frontend" && npm run build ) || die "frontend build failed"
   fi
 
@@ -142,16 +186,15 @@ do_deploy() {
 
   # 5. Update Python deps (server has internet; mirror avoids the slow official index).
   if [ "$SKIP_DEPS" -eq 0 ]; then
-    log "Updating Python deps (pip install -e .)…"
+    log "Updating Python deps (pip install -e .)..."
     remote_exec "cd $DEPLOY_APP_DIR && su -s /bin/bash vibe -c 'venv/bin/pip install -e . -i $PIP_INDEX_URL --timeout 60 --retries 5'"
   fi
 
-  # 6. Restart and wait for health (startup takes ~1 min on this box).
-  log "Restarting $DEPLOY_SERVICE…"
-  remote_exec "systemctl restart $DEPLOY_SERVICE"
-  log "Waiting for health on port $DEPLOY_HTTP_PORT…"
-  remote_exec "for i in \$(seq 1 40); do curl -sf http://127.0.0.1:$DEPLOY_HTTP_PORT/health && echo && break; sleep 3; done"
-  remote_exec "$DEPLOY_APP_DIR/venv/bin/vibe-trading --version"
+  # 6. Install user skills (must happen before the restart so they load).
+  install_user_skills
+
+  # 7. Restart both services and wait for health (startup takes ~1 min on this box).
+  restart_services
   log "Deploy complete."
 }
 
@@ -167,10 +210,9 @@ do_rollback() {
   fi
   log "Rolling back to $backup"
   remote_exec "test -f '$backup'"
-  remote_exec "cd /opt && tar xzf '$backup' && chown -R vibe:vibe vibe-trading && cd $DEPLOY_APP_DIR && su -s /bin/bash vibe -c 'venv/bin/pip install -e . -i $PIP_INDEX_URL --timeout 60 --retries 5' && systemctl restart $DEPLOY_SERVICE"
-  log "Waiting for health on port $DEPLOY_HTTP_PORT…"
-  remote_exec "for i in \$(seq 1 40); do curl -sf http://127.0.0.1:$DEPLOY_HTTP_PORT/health && echo && break; sleep 3; done"
-  remote_exec "$DEPLOY_APP_DIR/venv/bin/vibe-trading --version"
+  remote_exec "cd /opt && tar xzf '$backup' && chown -R vibe:vibe vibe-trading && cd $DEPLOY_APP_DIR && su -s /bin/bash vibe -c 'venv/bin/pip install -e . -i $PIP_INDEX_URL --timeout 60 --retries 5'"
+  install_user_skills
+  restart_services
   log "Rollback complete."
 }
 
@@ -179,7 +221,7 @@ do_setup_key() {
   [ -f "$pub" ] || die "no key at $pub — generate one with: ssh-keygen -t ed25519"
   log "Copying $pub → $DEPLOY_HOST:/root/.ssh/authorized_keys (will prompt for the server password once)"
   ssh-copy-id "${SSH_OPTS[@]}" "$SSH_DEST" || die "ssh-copy-id failed"
-  log "Verifying key-based auth…"
+  log "Verifying key-based auth..."
   ssh -o BatchMode=yes "${SSH_OPTS[@]}" "$SSH_DEST" 'echo KEY_AUTH_OK' || die "key auth not working"
   log "SSH key auth is set up. Future deploys need no password."
 }

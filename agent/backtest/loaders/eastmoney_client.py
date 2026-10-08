@@ -22,10 +22,16 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
+import threading
+import time
 from typing import Any
 
+import requests
+
 from backtest.loaders._http import resolve_min_interval, throttled_get_json
+from backtest.loaders.juliang_proxy import get_juliang_client
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +67,61 @@ _FIELDS2 = "f51,f52,f53,f54,f55,f56,f57"
 # the search endpoint. Keyed by the upper-cased bare ticker (e.g. "AAPL").
 _US_SECID_CACHE: dict[str, str | None] = {}
 
+# ---------------------------------------------------------------------------
+# Juliang proxy routing (unblocks WAF-blocked Eastmoney quote hosts)
+# ---------------------------------------------------------------------------
+
+# Eastmoney hosts whose connections are WAF-blocked from datacenter IPs. Only
+# these are routed through the Juliang dynamic proxy; the datacenter/search/report
+# hosts stay direct (they are reachable from the production server).
+_JULIANG_PROXIED_HOSTS_DEFAULT = ("push2.eastmoney.com", "push2his.eastmoney.com")
+_JULIANG_HOSTS_ENV = "VIBE_TRADING_JULIANG_HOSTS"
+
+# Direct-first circuit breaker: after consecutive direct failures, skip the
+# doomed direct attempt for a cooldown window so a blocked IP does not pay one
+# failed connection per request.
+_DIRECT_BREAKER_MAX_FAILURES = 2
+_DIRECT_BREAKER_COOLDOWN_S = 60.0
+
+
+def _juliang_proxied_hosts() -> frozenset[str]:
+    """Return the Eastmoney hosts to route through the Juliang proxy.
+
+    ``VIBE_TRADING_JULIANG_HOSTS`` (comma-separated) overrides the default set.
+    """
+    override = os.environ.get(_JULIANG_HOSTS_ENV, "").strip()
+    if override:
+        return frozenset(h.strip().lower() for h in override.split(",") if h.strip())
+    return frozenset(_JULIANG_PROXIED_HOSTS_DEFAULT)
+
+
+class _DirectCircuitBreaker:
+    """Tracks consecutive direct failures so a blocked IP skips the direct path."""
+
+    def __init__(self, max_failures: int, cooldown_s: float) -> None:
+        self._max_failures = max_failures
+        self._cooldown_s = cooldown_s
+        self._failures = 0
+        self._open_until = 0.0
+        self._lock = threading.Lock()
+
+    def record_failure(self) -> None:
+        with self._lock:
+            self._failures += 1
+            if self._failures >= self._max_failures:
+                self._open_until = time.monotonic() + self._cooldown_s
+
+    def record_success(self) -> None:
+        with self._lock:
+            self._failures = 0
+
+    def should_skip_direct(self) -> bool:
+        with self._lock:
+            return time.monotonic() < self._open_until
+
+
+_DIRECT_BREAKER = _DirectCircuitBreaker(_DIRECT_BREAKER_MAX_FAILURES, _DIRECT_BREAKER_COOLDOWN_S)
+
 # A JSONP envelope is a JS callback identifier followed by a parenthesized body,
 # optionally terminated by ';'. The identifier is restricted to legal JS names
 # (incl. dotted namespaces like "jQuery.cb") so a plain JSON array/object body —
@@ -76,8 +137,59 @@ def _min_interval() -> float:
     return resolve_min_interval(_MIN_INTERVAL_ENV, _DEFAULT_MIN_INTERVAL)
 
 
+def _should_proxy(url: str) -> bool:
+    """Return True when ``url`` should be routed through the Juliang proxy."""
+    client = get_juliang_client()
+    if not client.is_enabled() or not client.is_configured():
+        return False
+    host = re.sub(r"^[a-z]+://", "", url.lower()).split("/", 1)[0].split(":", 1)[0]
+    return host in _juliang_proxied_hosts()
+
+
+# Bad nodes are common with dynamic proxies (~30% in practice), so each request
+# through a failing node re-extracts a fresh proxy and retries, up to this many
+# total attempts per request.
+_MAX_PROXY_TRIES = 5
+
+
+def _get_json_via_proxy(url: str, params: dict[str, Any]) -> Any:
+    """GET ``url`` through a (reused) Juliang proxy, re-extracting on failure.
+
+    Reuses the pooled proxy for as long as it is valid; when a request through
+    it fails, invalidates it and retries with freshly extracted proxies (up to
+    ``_MAX_PROXY_TRIES`` total attempts) to ride out bad dynamic-proxy nodes.
+    """
+    client = get_juliang_client()
+    last_exc: requests.RequestException | None = None
+    for _ in range(_MAX_PROXY_TRIES):
+        entry = client.get_proxy()
+        if entry is None:
+            break
+        try:
+            return throttled_get_json(
+                url,
+                host_key=_HOST_KEY,
+                min_interval=_min_interval(),
+                params=params,
+                proxies=entry.proxies_dict(),
+            )
+        except requests.RequestException as exc:
+            last_exc = exc
+            client.invalidate()  # next get_proxy() extracts a fresh proxy
+    if last_exc is not None:
+        raise last_exc
+    raise requests.RequestException("Juliang proxy unavailable for Eastmoney request")
+
+
 def get_json(url: str, *, params: dict[str, Any]) -> Any:
     """Issue a throttled Eastmoney GET and decode the body as JSON.
+
+    When the URL targets an Eastmoney quote host that WAF-blocks the caller's IP
+    (``push2`` / ``push2his``) and the Juliang proxy is enabled, the request is
+    tried direct first and, on failure, routed through the pooled Juliang
+    dynamic proxy. A circuit breaker skips the doomed direct attempt after
+    repeated failures so a blocked IP does not pay one failed connection per
+    request.
 
     Args:
         url: Fully-qualified Eastmoney endpoint URL.
@@ -92,12 +204,34 @@ def get_json(url: str, *, params: dict[str, Any]) -> Any:
         requests.HTTPError: Non-2xx response status.
         ValueError: Body is not valid JSON.
     """
-    return throttled_get_json(
-        url,
-        host_key=_HOST_KEY,
-        min_interval=_min_interval(),
-        params=params,
-    )
+    if not _should_proxy(url):
+        return throttled_get_json(
+            url,
+            host_key=_HOST_KEY,
+            min_interval=_min_interval(),
+            params=params,
+        )
+
+    direct_exc: requests.RequestException | None = None
+    if not _DIRECT_BREAKER.should_skip_direct():
+        try:
+            result = throttled_get_json(
+                url,
+                host_key=_HOST_KEY,
+                min_interval=_min_interval(),
+                params=params,
+            )
+            _DIRECT_BREAKER.record_success()
+            return result
+        except requests.RequestException as exc:
+            direct_exc = exc
+            _DIRECT_BREAKER.record_failure()
+    try:
+        return _get_json_via_proxy(url, params)
+    except requests.RequestException as proxy_exc:
+        if direct_exc is not None:
+            raise direct_exc from proxy_exc
+        raise
 
 
 def _resolve_a_share_secid(code: str, suffix: str) -> str | None:

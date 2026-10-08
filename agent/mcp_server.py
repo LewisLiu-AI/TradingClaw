@@ -18,8 +18,9 @@ analysis. Every exposed tool is read-only or research-only; no order-placing or
 order-cancelling tool is ever surfaced via MCP.
 
 Usage:
-    python mcp_server.py                    # stdio transport (default)
-    python mcp_server.py --transport sse    # SSE transport for web clients
+    python mcp_server.py                      # stdio transport (default)
+    python mcp_server.py --transport sse      # SSE transport for web clients
+    python mcp_server.py --transport http     # streamable HTTP (reverse-proxy friendly)
 
 OpenClaw config (~/.openclaw/config.yaml):
     skills:
@@ -1895,15 +1896,24 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(description="Vibe-Trading MCP Server")
-    parser.add_argument("--transport", choices=["stdio", "sse"], default="stdio", help="MCP transport (default: stdio)")
-    parser.add_argument("--port", type=int, default=8900, help="SSE port (only used with --transport sse)")
+    parser.add_argument(
+        "--transport", choices=["stdio", "sse", "http"], default="stdio",
+        help="MCP transport (default: stdio)",
+    )
+    parser.add_argument("--port", type=int, default=8900, help="HTTP/SSE port (only used with --transport sse/http)")
+    parser.add_argument(
+        "--host", default="127.0.0.1",
+        help="Bind address for sse/http transports (default: 127.0.0.1; use 0.0.0.0 only behind an authenticating proxy)",
+    )
     args = parser.parse_args()
     _include_shell_tools = True if args.transport == "stdio" else _env_shell_tools_enabled()
     _registry = None
     _get_registry()  # pre-warm: avoids deadlock when first tools/call lazy-inits inside FastMCP worker thread
 
     if args.transport == "sse":
-        mcp.run(transport="sse", port=args.port)
+        mcp.run(transport="sse", host=args.host, port=args.port)
+    elif args.transport == "http":
+        mcp.run(transport="http", host=args.host, port=args.port)
     else:
         mcp.run()
 

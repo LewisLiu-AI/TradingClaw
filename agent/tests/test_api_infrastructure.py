@@ -190,6 +190,13 @@ def test_is_spa_html_route_correlation():
     assert helpers._is_spa_html_route("/correlation") is True
 
 
+def test_is_spa_html_route_plugins_page():
+    # Plugins SPA page shadows the GET /plugins API; subpaths stay API-only.
+    assert helpers._is_spa_html_route("/plugins") is True
+    assert helpers._is_spa_html_route("/plugins/mcp/svc") is False
+    assert helpers._is_spa_html_route("/plugins/skills/skill") is False
+
+
 def test_is_spa_html_route_runs_detail():
     assert helpers._is_spa_html_route("/runs/abc123") is True
     assert helpers._is_spa_html_route("/runs/abc123/") is True

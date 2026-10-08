@@ -32,7 +32,7 @@ ENV_EXAMPLE_PATH = AGENT_DIR / ".env.example"
 # ============================================================================
 
 _FRONTEND_DIST = Path(__file__).resolve().parent.parent.parent.parent / "frontend" / "dist"
-_SPA_HTML_EXACT_PATHS: frozenset[str] = frozenset({"/correlation"})
+_SPA_HTML_EXACT_PATHS: frozenset[str] = frozenset({"/correlation", "/plugins"})
 _SPA_HTML_PATH_REGEX: tuple[re.Pattern[str], ...] = (
     re.compile(r"^/runs/[^/]+/?$"),
 )
@@ -55,7 +55,9 @@ async def _spa_html_deep_link_fallback(request: Request, call_next):
         if "text/html" in accept and _is_spa_html_route(request.url.path):
             index = _FRONTEND_DIST / "index.html"
             if index.exists():
-                return FileResponse(str(index))
+                # no-store: heuristic caching would otherwise let a later
+                # same-URL API fetch (Accept: */*) reuse this HTML response.
+                return FileResponse(str(index), headers={"Cache-Control": "no-store"})
     return await call_next(request)
 
 

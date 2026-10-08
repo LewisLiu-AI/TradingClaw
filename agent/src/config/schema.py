@@ -358,6 +358,9 @@ class MCPServerConfig(ConfigBase):
     auth: MCPOAuthConfig | None = None
     tool_timeout: float = Field(default=30.0, ge=0.1)
     init_timeout: float | None = Field(default=None, ge=0.1)
+    # Operator-level switch (Web UI 插件 page). A disabled server stays in the
+    # config file but is skipped during tool registry assembly.
+    enabled: bool = True
     enabled_tools: list[str] = Field(default_factory=lambda: ["*"])
 
     def resolved_transport(self) -> Literal["stdio", "sse", "streamableHttp"]:
@@ -423,6 +426,7 @@ class MCPServerConfigOverride(ConfigBase):
     auth: MCPOAuthConfig | None = None
     tool_timeout: float | None = Field(default=None, ge=0.1)
     init_timeout: float | None = Field(default=None, ge=0.1)
+    enabled: bool | None = None
     enabled_tools: list[str] | None = None
 
 

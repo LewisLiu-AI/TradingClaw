@@ -157,6 +157,28 @@ export const api = {
   getChannelStatus: () => request<ChannelRuntimeStatus>("/channels/status"),
   startChannels: () => request<ChannelRuntimeActionResponse>("/channels/start", { method: "POST" }),
   stopChannels: () => request<ChannelRuntimeActionResponse>("/channels/stop", { method: "POST" }),
+
+  // Plugins API (MCP servers & skills)
+  listPlugins: () => request<PluginsResponse>("/plugins"),
+  updateMCPServer: (name: string, patch: UpdateMCPServerRequest) =>
+    request<MCPServerInfo>(`/plugins/mcp/${encodeURIComponent(name)}`, {
+      method: "PUT",
+      body: JSON.stringify(patch),
+    }),
+  updateSkillEnabled: (name: string, enabled: boolean) =>
+    request<{ name: string; enabled: boolean; state_path: string }>(`/plugins/skills/${encodeURIComponent(name)}`, {
+      method: "PUT",
+      body: JSON.stringify({ enabled }),
+    }),
+  getJuliangProxySettings: () => request<JuliLangProxySettings>("/settings/juliang-proxy"),
+  updateJuliangProxySettings: (settings: UpdateJuliLangProxySettingsRequest) =>
+    request<JuliLangProxySettings>("/settings/juliang-proxy", {
+      method: "PUT",
+      body: JSON.stringify(settings),
+    }),
+  getJuliangProxyStatus: () => request<JuliLangProxyStatus>("/settings/juliang-proxy/status"),
+  refreshJuliangProxy: () =>
+    request<JuliLangProxyStatus>("/settings/juliang-proxy/refresh", { method: "POST" }),
   runChannelPairingCommand: (body: ChannelPairingCommandRequest) =>
     request<ChannelPairingCommandResponse>("/channels/pairing/command", {
       method: "POST",
@@ -314,6 +336,41 @@ export interface UpdateDataSourceSettingsRequest {
   clear_tushare_token?: boolean;
 }
 
+export interface JuliLangProxySettings {
+  enabled: boolean;
+  trade_no_configured: boolean;
+  api_key_configured: boolean;
+  username: string;
+  password_configured: boolean;
+  quota_alert_threshold: number;
+  env_path: string;
+}
+
+export interface UpdateJuliLangProxySettingsRequest {
+  enabled?: boolean;
+  trade_no?: string;
+  api_key?: string;
+  username?: string;
+  password?: string;
+  quota_alert_threshold?: number;
+  clear_trade_no?: boolean;
+  clear_api_key?: boolean;
+  clear_username?: boolean;
+  clear_password?: boolean;
+}
+
+export interface JuliLangProxyStatus {
+  configured: boolean;
+  enabled: boolean;
+  surplus_quantity: number | null;
+  current_proxy: string | null;
+  proxy_valid: boolean;
+  proxy_valid_until: number | null;
+  last_extracted_at: number | null;
+  quota_alert_threshold: number;
+  last_error: string | null;
+}
+
 export interface ChannelAdapterStatus {
   name: string;
   display_name: string;
@@ -336,6 +393,52 @@ export interface ChannelRuntimeStatus {
 
 export interface ChannelRuntimeActionResponse extends ChannelRuntimeStatus {
   status: string;
+}
+
+// --- Plugins (MCP servers & skills) ---
+
+export interface MCPServerInfo {
+  name: string;
+  enabled: boolean;
+  transport: string;
+  command: string;
+  args: string[];
+  url: string;
+  env_keys: string[];
+  header_keys: string[];
+  has_auth: boolean;
+  tool_timeout: number;
+  init_timeout: number | null;
+  enabled_tools: string[];
+  valid: boolean;
+  error?: string | null;
+}
+
+export interface SkillInfo {
+  name: string;
+  description: string;
+  category: string;
+  source: "bundled" | "user";
+  enabled: boolean;
+  dir_path: string;
+}
+
+export interface PluginsResponse {
+  config_path: string;
+  skills_state_path: string;
+  mcp: MCPServerInfo[];
+  skills: SkillInfo[];
+}
+
+export interface UpdateMCPServerRequest {
+  enabled?: boolean;
+  type?: "stdio" | "sse" | "streamableHttp" | null;
+  command?: string;
+  args?: string[];
+  url?: string;
+  tool_timeout?: number;
+  init_timeout?: number | null;
+  enabled_tools?: string[];
 }
 
 export interface ChannelPairingCommandRequest {

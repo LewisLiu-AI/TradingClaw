@@ -95,6 +95,16 @@ const UNIVERSE_OPTIONS = [
   { value: "btc-usdt", label: "BTC-USDT (Crypto)" },
 ];
 
+// Alpha meta tags universes as equity_us/equity_cn/crypto (what /alpha/list
+// returns), while the bench form + POST /alpha/bench expect the data-panel
+// keys. The detail page's "Run bench" deep link passes the meta tag through,
+// so map it here (the API also normalizes these aliases server-side).
+const META_UNIVERSE_TO_BENCH: Record<string, string> = {
+  equity_cn: "csi300",
+  equity_us: "sp500",
+  crypto: "btc-usdt",
+};
+
 const PAGE_SIZE = 50;
 
 /* ---------- Helpers ---------- */
@@ -517,11 +527,12 @@ function DetailView({ alphaId }: DetailProps) {
   const formulaLatex = (meta["formula_latex"] as string | undefined) || "";
   const nickname = (meta["nickname"] as string | undefined) || "";
   const firstUniverse = ((meta["universe"] as string[] | undefined) || [])[0] || "";
+  const benchUniverse = META_UNIVERSE_TO_BENCH[firstUniverse] || firstUniverse;
 
   // Keep period in sync with the BenchView form default so the prefilled
   // form values match what users see if they click "Run bench" from here.
-  const benchHref = firstUniverse
-    ? `/alpha-zoo/bench?zoo=${encodeURIComponent(a.zoo)}&universe=${encodeURIComponent(firstUniverse)}&period=2020-2025`
+  const benchHref = benchUniverse
+    ? `/alpha-zoo/bench?zoo=${encodeURIComponent(a.zoo)}&universe=${encodeURIComponent(benchUniverse)}&period=2020-2025`
     : `/alpha-zoo/bench?zoo=${encodeURIComponent(a.zoo)}&period=2020-2025`;
 
   return (
@@ -642,9 +653,12 @@ function BenchView() {
   const { search: locSearch } = useLocation();
   const initial = useMemo(() => {
     const q = new URLSearchParams(locSearch);
+    const qUniverse = q.get("universe");
     return {
       zoo: q.get("zoo") || "alpha101",
-      universe: q.get("universe") || "csi300",
+      // Older deep links carry meta-style tags (equity_us/...); normalize so
+      // the select preselects a real option.
+      universe: (qUniverse && META_UNIVERSE_TO_BENCH[qUniverse]) || qUniverse || "csi300",
       period: q.get("period") || "2020-2025",
       top: Number(q.get("top") || "20"),
     };

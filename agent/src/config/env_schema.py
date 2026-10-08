@@ -168,6 +168,26 @@ class DataConfig(_EnvBase):
     qveris_api_key: str = Field(alias="QVERIS_API_KEY", default="")
     qveris_base_url: str = Field(alias="QVERIS_BASE_URL", default="")
     rsshub_base_url: str = Field(alias="RSSHUB_BASE_URL", default="")
+    # Juliang (巨量) dynamic proxy — unblocks Eastmoney quote hosts (push2 /
+    # push2his) that WAF-block datacenter IPs. Consumed by
+    # ``backtest/loaders/juliang_proxy.py``.
+    juliang_enabled: EnvBool = Field(alias="VIBE_TRADING_JULIANG_ENABLED", default=False)
+    juliang_trade_no: str = Field(alias="VIBE_TRADING_JULIANG_TRADE_NO", default="")
+    juliang_api_key: str = Field(alias="VIBE_TRADING_JULIANG_API_KEY", default="")
+    juliang_username: str = Field(alias="VIBE_TRADING_JULIANG_USERNAME", default="")
+    juliang_password: str = Field(alias="VIBE_TRADING_JULIANG_PASSWORD", default="")
+    juliang_proxy_lifetime_s: int = Field(
+        alias="VIBE_TRADING_JULIANG_PROXY_LIFETIME_S", default=45,
+    )
+    juliang_quota_alert_threshold: int = Field(
+        alias="VIBE_TRADING_JULIANG_QUOTA_ALERT_THRESHOLD", default=1000,
+    )
+    juliang_quota_alert_min_interval_h: int = Field(
+        alias="VIBE_TRADING_JULIANG_QUOTA_ALERT_MIN_INTERVAL_H", default=24,
+    )
+    juliang_quota_alert_interval_s: int = Field(
+        alias="VIBE_TRADING_JULIANG_QUOTA_ALERT_INTERVAL_S", default=3600,
+    )
 
 
 # ---------------------------------------------------------------------------

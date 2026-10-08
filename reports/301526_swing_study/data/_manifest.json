@@ -1,0 +1,29 @@
+{
+  "symbol": "301526.SZ",
+  "start": "2024-06-01",
+  "end": "2026-09-12",
+  "files": [
+    "_pivots_zigzag12.csv",
+    "announcements.csv",
+    "block_trade.csv",
+    "holders.csv",
+    "idx_cyb.csv",
+    "idx_cyb50.csv",
+    "idx_hs300.csv",
+    "idx_zz500.csv",
+    "inst_participation.csv",
+    "lhb.csv",
+    "lockup.csv",
+    "margin.csv",
+    "mkt_csi500.csv",
+    "mkt_margin.csv",
+    "mkt_sse.csv",
+    "mkt_sse50.csv",
+    "mkt_szse.csv",
+    "moneyflow.csv",
+    "news.csv",
+    "px_hfq.csv",
+    "px_qfq.csv",
+    "px_raw.csv"
+  ]
+}

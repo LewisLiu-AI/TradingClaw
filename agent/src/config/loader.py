@@ -320,6 +320,7 @@ def _default_mcp_server_payload(base: dict[str, Any]) -> dict[str, Any]:
         "headers": {},
         "tool_timeout": base.get("tool_timeout", 30.0),
         "init_timeout": base.get("init_timeout"),
+        "enabled": bool(base.get("enabled", True)),
         "enabled_tools": list(enabled_tools) if isinstance(enabled_tools, list) else ["*"],
     }
 
