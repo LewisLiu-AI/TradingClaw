@@ -14,6 +14,7 @@ const PROXY_PATHS = [
   "/live",
   "/upload",
   "/shadow-reports",
+  "/scheduled-runs",
 ];
 
 export default defineConfig(({ mode }) => {

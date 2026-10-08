@@ -2,8 +2,9 @@
 
 Exercises the REST surface mounted by ``register_scheduled_routes``:
 ``POST /scheduled-runs`` (create), ``GET /scheduled-runs`` (list + filter),
-and ``DELETE /scheduled-runs/{job_id}`` (cancel). Each test drives the app
-through ``TestClient`` and asserts the persisted store state, so the route
+``DELETE /scheduled-runs/{job_id}`` (cancel), and
+``POST /scheduled-runs/{job_id}/run`` (manual run-now). Each test drives the
+app through ``TestClient`` and asserts the persisted store state, so the route
 wiring, validation, and status codes are covered end to end.
 
 The store singleton is redirected to a per-test ``tmp_path`` file so nothing
@@ -14,6 +15,7 @@ without a configured API key.
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 import pytest
@@ -189,5 +191,116 @@ def test_delete_rejects_unsafe_job_id(
     # outside ``[A-Za-z0-9_-]``) is rejected by the handler before any store
     # lookup, so it returns 400 rather than the 404 used for unknown ids.
     response = client.delete("/scheduled-runs/bad.id")
+
+    assert response.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# POST /scheduled-runs/{job_id}/run (manual run-now)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def fake_dispatch(monkeypatch: pytest.MonkeyPatch) -> list[ScheduledResearchJob]:
+    """Replace the dispatch callable with a no-op recording its calls."""
+    calls: list[ScheduledResearchJob] = []
+
+    async def _dispatch(job: ScheduledResearchJob) -> None:
+        calls.append(job)
+
+    monkeypatch.setattr(
+        scheduled_routes, "_dispatch_scheduled_research_job", _dispatch
+    )
+    return calls
+
+
+def _wait_until_finished(
+    store: ScheduledResearchJobStore, job_id: str, timeout_s: float = 5.0
+) -> ScheduledResearchJob:
+    """Poll the store until the background run-now task wrote its completion."""
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        job = store.get(job_id)
+        if job is not None and job.status != JobStatus.RUNNING:
+            return job
+        time.sleep(0.02)
+    raise AssertionError(f"run-now task for {job_id} did not finish in time")
+
+
+def test_run_now_dispatches_and_persists_completion(
+    client: TestClient,
+    store: ScheduledResearchJobStore,
+    fake_dispatch: list[ScheduledResearchJob],
+):
+    _seed(store, id="job-seed", status=JobStatus.COMPLETED)
+
+    response = client.post("/scheduled-runs/job-seed/run")
+
+    assert response.status_code == 202
+    # The run is accepted asynchronously: the response snapshot is written
+    # after the synchronous RUNNING flip, before the background task starts.
+    assert response.json()["status"] == "running"
+
+    finished = _wait_until_finished(store, "job-seed")
+    assert len(fake_dispatch) == 1
+    assert fake_dispatch[0].id == "job-seed"
+    assert finished.status == JobStatus.COMPLETED
+    assert finished.last_run_at is not None
+
+
+def test_run_now_does_not_advance_next_run_at(
+    client: TestClient,
+    store: ScheduledResearchJobStore,
+    fake_dispatch: list[ScheduledResearchJob],
+):
+    _seed(store, id="job-seed", next_run_at=1_700_000_000_000)
+
+    response = client.post("/scheduled-runs/job-seed/run")
+    assert response.status_code == 202
+
+    finished = _wait_until_finished(store, "job-seed")
+    # A manual trigger is an extra run: the schedule position is untouched.
+    assert finished.next_run_at == 1_700_000_000_000
+
+
+def test_run_now_records_failure_when_dispatch_raises(
+    client: TestClient,
+    store: ScheduledResearchJobStore,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    async def _failing_dispatch(job: ScheduledResearchJob) -> None:
+        raise RuntimeError("session runtime unavailable")
+
+    monkeypatch.setattr(
+        scheduled_routes, "_dispatch_scheduled_research_job", _failing_dispatch
+    )
+    _seed(store, id="job-seed")
+
+    response = client.post("/scheduled-runs/job-seed/run")
+    assert response.status_code == 202
+
+    finished = _wait_until_finished(store, "job-seed")
+    assert finished.status == JobStatus.FAILED
+    assert finished.last_run_at is not None
+
+
+def test_run_now_unknown_job_returns_404(client: TestClient):
+    response = client.post("/scheduled-runs/never-existed/run")
+
+    assert response.status_code == 404
+
+
+def test_run_now_rejects_already_running_job_with_409(
+    client: TestClient, store: ScheduledResearchJobStore
+):
+    _seed(store, id="job-seed", status=JobStatus.RUNNING)
+
+    response = client.post("/scheduled-runs/job-seed/run")
+
+    assert response.status_code == 409
+
+
+def test_run_now_rejects_unsafe_job_id(client: TestClient):
+    response = client.post("/scheduled-runs/bad.id/run")
 
     assert response.status_code == 400
