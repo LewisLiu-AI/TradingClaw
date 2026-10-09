@@ -2,12 +2,12 @@
  "star_code": "000688.SH",
  "window": {
   "start": "2020-07-01",
-  "end": "2026-09-30",
-  "n_days": 1519
+  "end": "2026-10-08",
+  "n_days": 1520
  },
  "drop_days": {
-  "count": 264,
-  "share_pct": 17.38
+  "count": 265,
+  "share_pct": 17.43
  },
  "by_year": {
   "2020": {
@@ -41,8 +41,8 @@
    "worst_drop_pct": -9.22
   },
   "2026": {
-   "count": 50,
-   "avg_drop_pct": -3.26,
+   "count": 51,
+   "avg_drop_pct": -3.29,
    "worst_drop_pct": -7.7
   }
  },
@@ -50,32 +50,32 @@
   "-1.5~-2": 87,
   "-2~-3": 112,
   "-3~-4": 32,
-  "<-4": 33
+  "<-4": 34
  },
  "episodes": {
   "count": 92,
   "multi_day": 57
  },
  "fwd_after_drop_days": {
-  "fwd_1d_median": 0.13,
+  "fwd_1d_median": 0.12,
   "fwd_5d_median": -0.07,
-  "fwd_20d_median": -0.65,
+  "fwd_20d_median": -0.67,
   "fwd_5d_median_baseline_all_days": -0.24
  },
  "overnight_us_on_drop_days": {
-  "qqq_median": -0.12,
-  "qqq_le_minus1_share": 25.8,
+  "qqq_median": -0.13,
+  "qqq_le_minus1_share": 25.7,
   "soxx_median": -0.31,
-  "soxx_le_minus2_share": 23.9
+  "soxx_le_minus2_share": 23.8
  },
  "model_calibration": {
   "p_next5_bigdrop_all_days": {
    "pct": 56.9,
-   "n": 1519
+   "n": 1520
   },
   "p_next5_bigdrop_below_ma60": {
-   "pct": 48.6,
-   "n": 843
+   "pct": 48.7,
+   "n": 844
   },
   "p_next5_bigdrop_hot_mom20gt10_volratio12": {
    "pct": 85.2,
@@ -86,8 +86,8 @@
    "n": 98
   },
   "p_next5_bigdrop_two_down_days": {
-   "pct": 54.6,
-   "n": 392
+   "pct": 54.5,
+   "n": 393
   },
   "p_next5_bigdrop_calm_regime": {
    "pct": 50.3,
@@ -95,8 +95,8 @@
   },
   "overnight_us_conditions": {
    "overnight_qqq_le_1.0pct": {
-    "p_star50_drop_same_day_pct": 24.2,
-    "n": 281
+    "p_star50_drop_same_day_pct": 24.0,
+    "n": 283
    },
    "overnight_qqq_le_1.5pct": {
     "p_star50_drop_same_day_pct": 27.0,
@@ -107,16 +107,16 @@
     "n": 102
    },
    "overnight_soxx_le_1.0pct": {
-    "p_star50_drop_same_day_pct": 22.6,
-    "n": 402
+    "p_star50_drop_same_day_pct": 22.7,
+    "n": 406
    },
    "overnight_soxx_le_1.5pct": {
-    "p_star50_drop_same_day_pct": 23.9,
-    "n": 305
+    "p_star50_drop_same_day_pct": 23.7,
+    "n": 308
    },
    "overnight_soxx_le_2.0pct": {
-    "p_star50_drop_same_day_pct": 28.3,
-    "n": 223
+    "p_star50_drop_same_day_pct": 27.9,
+    "n": 226
    }
   }
  }
