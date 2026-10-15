@@ -130,13 +130,13 @@
  },
  {
   "episode_id": 92,
-  "dates": "2026-09-24~10-08",
-  "cum_drop": -12.31,
+  "dates": "2026-09-24~10-14",
+  "cum_drop": -16.89,
   "category": "海外传导 | 技术性回调",
-  "catalyst": "节前避险+利好兑现+长假后补跌，四腿累计-12.31%",
-  "detail": "四段式出清：9/24（节前最后交易日）隔夜美债利率飙升+加息预期升温+美股科技下挫，叠加双节前避险与融资盘降仓、公募Q3调仓，缩量收全天最低-2.35%；9/28（节后首日）\"长假流动性退潮+中美利好兑现（八点共识卖事实）+高位科技结账\"三重压力，放量-4.06%；9/30（节前国庆前收官）避险延续-2.51%收次低；10/8（长假8天后复市首日）累积结账压力一次性释放，放量-4.82%（收1456.32、盘中-5.5%），算力硬件/AI硬件再度领跌。四腿累计-12.31%（6个交易日），为历史第四深簇；全程E1量化因子平静（深负动量），属存量趋势出清而非新增利空叠加",
+  "catalyst": "机构考核止损连锁+节前避险+利好兑现，六腿-16.89%",
+  "detail": "四段式出清演变为机构止损连锁：9/24（节前最后交易日）隔夜美债利率飙升+加息预期+美股科技下挫+双节避险，缩量-2.35%；9/28（节后首日）长假流动性退潮+八点共识卖事实+高位科技结账，放量-4.06%；9/30节前收官-2.51%；10/8长假8天累积压力一次性释放-4.82%（盘中-5.5%）；10/12-14险资与固收+考核性止损换仓延续——Q3科创50单季-30.7%创史上最大单季跌幅，三季报窗口放大浮亏考核压力，卖科技换银行（工行建行市值破3万亿新高虹吸），10/12 -2.10%、10/14 -3.29%；六条腿8个交易日累计-16.89%，为历史第三深簇。中泰/希瓦资产等指出：调整源于资金面（险资高买低卖、被动出清未结束）而非产业基本面，ETF承接对冲",
   "sources": [
-   "https://t.wind.com.cn/mobwftweb/M/news.html?share=wechat&show=wft&code=1343E9EBAED1&newsopenstyle=&lan=cn&device=pc&gateway=news&related=true&terminaltype=COM.WINDRAG&version=&useless=0.056828",
+   "https://t.wind.com.cn/mobwftweb/M/news.html?share=wechat&show=wft&code=C95CC4CF3BF3&newsopenstyle=&lan=cn&device=pc&gateway=news&related=true&terminaltype=COM.WINDRAG&version=&useless=0.926062",
    "https://t.wind.com.cn/mobwftweb/M/news.html?share=wechat&show=wft&code=105E96F13270&newsopenstyle=&lan=cn&device=pc&gateway=news&related=true&terminaltype=COM.WINDRAG&version=&useless=0.118850"
   ],
   "confidence": "高"
