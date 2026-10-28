@@ -2,12 +2,12 @@
  "star_code": "000688.SH",
  "window": {
   "start": "2020-07-01",
-  "end": "2026-10-22",
-  "n_days": 1530
+  "end": "2026-10-27",
+  "n_days": 1533
  },
  "drop_days": {
-  "count": 270,
-  "share_pct": 17.65
+  "count": 272,
+  "share_pct": 17.74
  },
  "by_year": {
   "2020": {
@@ -41,16 +41,16 @@
    "worst_drop_pct": -9.22
   },
   "2026": {
-   "count": 56,
-   "avg_drop_pct": -3.2,
+   "count": 58,
+   "avg_drop_pct": -3.22,
    "worst_drop_pct": -7.7
   }
  },
  "bucket_dist": {
   "-1.5~-2": 88,
-  "-2~-3": 115,
+  "-2~-3": 116,
   "-3~-4": 33,
-  "<-4": 34
+  "<-4": 35
  },
  "episodes": {
   "count": 92,
@@ -58,24 +58,24 @@
  },
  "fwd_after_drop_days": {
   "fwd_1d_median": 0.1,
-  "fwd_5d_median": -0.24,
+  "fwd_5d_median": -0.28,
   "fwd_20d_median": -0.72,
   "fwd_5d_median_baseline_all_days": -0.31
  },
  "overnight_us_on_drop_days": {
-  "qqq_median": -0.11,
-  "qqq_le_minus1_share": 25.2,
-  "soxx_median": -0.29,
-  "soxx_le_minus2_share": 23.3
+  "qqq_median": -0.1,
+  "qqq_le_minus1_share": 25.0,
+  "soxx_median": -0.28,
+  "soxx_le_minus2_share": 23.2
  },
  "model_calibration": {
   "p_next5_bigdrop_all_days": {
-   "pct": 57.2,
-   "n": 1530
+   "pct": 57.3,
+   "n": 1533
   },
   "p_next5_bigdrop_below_ma60": {
-   "pct": 49.3,
-   "n": 854
+   "pct": 49.5,
+   "n": 857
   },
   "p_next5_bigdrop_hot_mom20gt10_volratio12": {
    "pct": 85.2,
@@ -86,8 +86,8 @@
    "n": 98
   },
   "p_next5_bigdrop_two_down_days": {
-   "pct": 55.1,
-   "n": 396
+   "pct": 54.9,
+   "n": 397
   },
   "p_next5_bigdrop_calm_regime": {
    "pct": 50.3,
