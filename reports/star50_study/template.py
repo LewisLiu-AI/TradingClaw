@@ -96,7 +96,7 @@ a{color:var(--accent)}
     <div class="meta">
       <span>数据窗口 2020-07-01 → 2026-10-23</span>
       <span>交易日 n=__N_DAYS__</span>
-      <span>大跌日 270（17.6%）</span>
+      <span>大跌日 273（17.9%）</span>
       <span>事件簇 92</span>
       <span>已归因 __COVERED__/92 簇（高置信 __HIGH_CONF__）</span>
       <span>生成日期 2026-09-08</span>
@@ -125,14 +125,14 @@ a{color:var(--accent)}
 <div class="card">
   <div class="stat-grid">
     <div class="stat"><div class="v">1,531</div><div class="l">交易日样本</div></div>
-    <div class="stat"><div class="v neg">270</div><div class="l">大跌日（≥1.5%）</div></div>
+    <div class="stat"><div class="v neg">273</div><div class="l">大跌日（≥1.5%）</div></div>
     <div class="stat"><div class="v">17.2%</div><div class="l">大跌日占比</div></div>
     <div class="stat"><div class="v">91</div><div class="l">下跌事件簇</div></div>
     <div class="stat"><div class="v neg">-29.4%</div><div class="l">最深事件簇(2022.3-4)</div></div>
     <div class="stat"><div class="v neg">-9.22%</div><div class="l">单日最大(2025-04-07)</div></div>
   </div>
   <div id="chartIndex" class="chart"></div>
-  <p class="small">注：2020-07-23 之前为指数公司回溯计算值。跌幅分档：-1.5~-2% 共 88 天；-2~-3% 共 115 天；-3~-4% 共 33 天；&lt;-4% 共 34 天。</p>
+  <p class="small">注：2020-07-23 之前为指数公司回溯计算值。跌幅分档：-1.5~-2% 共 88 天；-2~-3% 共 116 天；-3~-4% 共 33 天；&lt;-4% 共 36 天。</p>
 </div>
 
 <!-- ============ S2 归因总览 ============ -->
