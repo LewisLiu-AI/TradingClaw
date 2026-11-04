@@ -260,6 +260,9 @@ export const api = {
     }),
   listAvailableDeliveryChannels: () =>
     request<DeliveryChannel[]>("/scheduled-runs/available-channels"),
+  // Intraday volume-surge monitor (env-gated background loop, read-only status).
+  getIntradayMonitorStatus: () =>
+    request<IntradayMonitorStatus>("/intraday-monitor/status"),
 };
 
 // --- Swarm types ---
@@ -1115,4 +1118,26 @@ export interface CreateScheduledRunRequest {
   schedule: string;
   config?: { channels?: string[] };
   timezone?: string;
+}
+
+export interface IntradayMonitorAlert {
+  symbol: string;
+  name: string;
+  sector: string;
+  time: string;
+  ratio: number;
+  close: number;
+  prev_session_high: number;
+}
+
+export interface IntradayMonitorStatus {
+  enabled: boolean;
+  running?: boolean;
+  started_at?: number;
+  interval_s?: number;
+  cooldown_s?: number;
+  in_trading_hours?: boolean;
+  last_scan_at?: number;
+  basket?: { symbol: string; name: string; sector: string }[];
+  alerts?: IntradayMonitorAlert[];
 }

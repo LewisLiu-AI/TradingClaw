@@ -110,6 +110,13 @@ class IntradayVolumeMonitor:
         self._stopping = False
         # symbol -> (alerted_at epoch s, alerted ratio)
         self._alert_state: dict[str, tuple[float, float]] = {}
+        # Status surface for the Web UI status card.
+        self._started_at: float | None = None
+        self._last_scan_at: float | None = None
+        self._last_scan_in_session = False
+        # Newest-first alert history, capped for the status endpoint.
+        self._alerts: list[dict] = []
+        self._max_alerts = 20
 
     @property
     def is_running(self) -> bool:
@@ -120,6 +127,7 @@ class IntradayVolumeMonitor:
         if not self._enabled or self.is_running:
             return
         self._stopping = False
+        self._started_at = self._now()
         loop = asyncio.get_running_loop()
         self._task = loop.create_task(self._run(), name="intraday-volume-monitor")
 
@@ -169,6 +177,7 @@ class IntradayVolumeMonitor:
         """
         from backtest.loaders.eastmoney_client import fetch_kline, resolve_secid
 
+        self._last_scan_at = self._now()
         today = datetime.fromtimestamp(self._now(), _TZ).strftime("%Y%m%d")
         fired: list[SurgeSignal] = []
         for symbol, (name, sector) in self._basket.items():
@@ -200,12 +209,42 @@ class IntradayVolumeMonitor:
 
         if fired:
             text = format_alert(fired, scan_time or datetime.now(_TZ).strftime("%H:%M"))
+            stamped = scan_time or datetime.now(_TZ).strftime("%H:%M")
+            for signal in fired:
+                self._alerts.insert(0, {
+                    "symbol": signal.symbol,
+                    "name": signal.name,
+                    "sector": signal.sector,
+                    "time": stamped,
+                    "ratio": round(signal.ratio, 1),
+                    "close": signal.close,
+                    "prev_session_high": signal.prev_session_high,
+                })
+            del self._alerts[self._max_alerts:]
             if text:
                 try:
                     await self._push(text)
                 except Exception:  # noqa: BLE001 - push failure must not kill the loop
                     logger.error("intraday monitor push failed", exc_info=True)
         return fired
+
+    def status(self) -> dict:
+        """Return a JSON-ready status snapshot for the Web UI card."""
+        return {
+            "running": self.is_running,
+            "started_at": self._started_at,
+            "interval_s": self._interval_s,
+            "cooldown_s": self._cooldown_s,
+            "in_trading_hours": in_trading_hours(
+                datetime.fromtimestamp(self._now(), _TZ)
+            ),
+            "last_scan_at": self._last_scan_at,
+            "basket": [
+                {"symbol": symbol, "name": name, "sector": sector}
+                for symbol, (name, sector) in sorted(self._basket.items())
+            ],
+            "alerts": list(self._alerts),
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -253,3 +292,13 @@ async def stop_intraday_monitor() -> None:
     """Stop the monitor if it was started."""
     if _monitor is not None:
         await _monitor.stop()
+
+
+def intraday_monitor_status() -> dict:
+    """Status snapshot for ``GET /intraday-monitor/status``.
+
+    Always reports ``enabled`` so the UI can distinguish "off" from "down".
+    """
+    if _monitor is None:
+        return {"enabled": False}
+    return {"enabled": True, **_monitor.status()}

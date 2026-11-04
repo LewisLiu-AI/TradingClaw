@@ -298,6 +298,9 @@ register_alpha_routes(app)
 from src.api.scheduled_routes import register_scheduled_routes  # noqa: E402
 register_scheduled_routes(app)
 
+from src.api.intraday_monitor_routes import register_intraday_monitor_routes  # noqa: E402
+register_intraday_monitor_routes(app)
+
 from src.api.scheduled_routes import (  # noqa: E402, F401
     CreateScheduledRunRequest,
     ScheduledRunResponse,

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+  Activity,
   CalendarClock,
   CheckCircle2,
   Loader2,
@@ -10,7 +11,12 @@ import {
   Trash2,
   XCircle,
 } from "lucide-react";
-import { api, type DeliveryChannel, type ScheduledRunItem } from "@/lib/api";
+import {
+  api,
+  type DeliveryChannel,
+  type IntradayMonitorStatus,
+  type ScheduledRunItem,
+} from "@/lib/api";
 
 const fieldClass =
   "w-full rounded-md border bg-background px-3 py-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60";
@@ -20,6 +26,7 @@ const hintClass = "text-xs text-muted-foreground";
 export function Scheduled() {
   const [jobs, setJobs] = useState<ScheduledRunItem[]>([]);
   const [channels, setChannels] = useState<DeliveryChannel[]>([]);
+  const [monitorStatus, setMonitorStatus] = useState<IntradayMonitorStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -38,12 +45,16 @@ export function Scheduled() {
     }
     setError(null);
     try {
-      const [jobsList, channelList] = await Promise.all([
+      const [jobsList, channelList, monitor] = await Promise.all([
         api.listScheduledRuns(),
         api.listAvailableDeliveryChannels(),
+        // The monitor endpoint post-dates some deployments; a failure here
+        // (404) must not break the page.
+        api.getIntradayMonitorStatus().catch(() => null),
       ]);
       setJobs(Array.isArray(jobsList) ? jobsList : []);
       setChannels(Array.isArray(channelList) ? channelList : []);
+      setMonitorStatus(monitor);
     } catch (err) {
       setError(err instanceof Error ? err.message : "加载失败");
     } finally {
@@ -202,6 +213,64 @@ export function Scheduled() {
       </div>
 
       {error && <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>}
+
+      {/* 盘中放量监控状态卡片（env 开关后台任务，只读） */}
+      {monitorStatus?.enabled && (
+        <div className="space-y-3 rounded-lg border bg-card p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <h2 className="flex items-center gap-2 text-sm font-semibold">
+              <Activity className="h-4 w-4" />
+              盘中放量监控
+            </h2>
+            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+              {monitorStatus.running ? (
+                <>
+                  <span className="h-2 w-2 rounded-full bg-green-500" />
+                  运行中
+                  {monitorStatus.in_trading_hours ? " · 交易时段" : " · 盘外待机"}
+                </>
+              ) : (
+                <>
+                  <XCircle className="h-3.5 w-3.5 text-muted-foreground" />
+                  未运行
+                </>
+              )}
+            </span>
+          </div>
+          <div className={hintClass}>
+            篮子 {monitorStatus.basket?.length ?? 0} 只 · 每{" "}
+            {Math.round((monitorStatus.interval_s ?? 300) / 60)} 分钟扫描 · 提醒冷却{" "}
+            {Math.round((monitorStatus.cooldown_s ?? 1800) / 60)} 分钟
+            {monitorStatus.last_scan_at
+              ? ` · 上次扫描 ${new Date(monitorStatus.last_scan_at * 1000).toLocaleTimeString("zh-CN", { hour12: false })}`
+              : " · 今日未扫描"}
+          </div>
+          {monitorStatus.alerts && monitorStatus.alerts.length > 0 ? (
+            <ul className="space-y-1 text-sm">
+              {monitorStatus.alerts.slice(0, 6).map((a, i) => (
+                <li key={`${a.symbol}-${a.time}-${i}`} className="flex items-center justify-between gap-2">
+                  <span>
+                    <span className="text-xs text-muted-foreground">[{a.sector}]</span>{" "}
+                    {a.name}({a.symbol}) {a.time}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {a.ratio}× 放量 · {a.close.toFixed(2)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className={hintClass}>暂无触发记录（触发时同步推送飞书）。</p>
+          )}
+          <div className="flex flex-wrap gap-1">
+            {(monitorStatus.basket ?? []).map((s) => (
+              <span key={s.symbol} className="rounded-full bg-muted px-2 py-0.5 text-xs">
+                {s.name}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* 创建表单 */}
       <form onSubmit={(e) => void createJob(e)} className="space-y-4 rounded-lg border bg-card p-5 shadow-sm">
