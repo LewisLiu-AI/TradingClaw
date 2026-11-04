@@ -25,6 +25,11 @@ from datetime import datetime
 from typing import Awaitable, Callable, Mapping
 from zoneinfo import ZoneInfo
 
+from src.intraday_monitor.fundflow import (
+    InflowSignal,
+    detect_inflow_continuity,
+    format_inflow_alert,
+)
 from src.intraday_monitor.scanner import (
     DEFAULT_BASKET,
     SurgeSignal,
@@ -38,6 +43,7 @@ logger = logging.getLogger(__name__)
 _TZ = ZoneInfo("Asia/Shanghai")
 DEFAULT_INTERVAL_S = 300
 DEFAULT_COOLDOWN_S = 30 * 60
+DEFAULT_FUND_FLOW_INTERVAL_S = 30 * 60
 _ESCALATION_MULTIPLE = 2.0
 
 PushFn = Callable[[str], Awaitable[None]]
@@ -96,6 +102,7 @@ class IntradayVolumeMonitor:
         basket: Mapping[str, tuple[str, str]] | None = None,
         interval_s: int = DEFAULT_INTERVAL_S,
         cooldown_s: float = DEFAULT_COOLDOWN_S,
+        fund_flow_interval_s: float = DEFAULT_FUND_FLOW_INTERVAL_S,
         push_fn: PushFn | None = None,
         now_fn: NowFn = time.time,
         enabled: bool = True,
@@ -117,6 +124,12 @@ class IntradayVolumeMonitor:
         # Newest-first alert history, capped for the status endpoint.
         self._alerts: list[dict] = []
         self._max_alerts = 20
+        # Layer-3 fund-flow continuity state.
+        self._fund_flow_interval_s = fund_flow_interval_s
+        self._last_fund_flow_scan_at: float | None = None
+        # symbol -> alerted date (YYYY-MM-DD); one fund-flow alert per day.
+        self._fund_flow_alerted: dict[str, str] = {}
+        self._fund_flow_signals: list[dict] = []
 
     @property
     def is_running(self) -> bool:
@@ -150,6 +163,8 @@ class IntradayVolumeMonitor:
                 now = datetime.fromtimestamp(self._now(), _TZ)
                 if in_trading_hours(now):
                     await self.scan_once(scan_time=now.strftime("%H:%M"))
+                    if self._fund_flow_due(now):
+                        await self.scan_fund_flow(scan_time=now.strftime("%H:%M"))
                     await self._sleep(self._next_boundary_s())
                 else:
                     await self._sleep(60)
@@ -228,6 +243,64 @@ class IntradayVolumeMonitor:
                     logger.error("intraday monitor push failed", exc_info=True)
         return fired
 
+    def _fund_flow_due(self, now: datetime) -> bool:
+        if self._last_fund_flow_scan_at is None:
+            return True
+        return self._now() - self._last_fund_flow_scan_at >= self._fund_flow_interval_s
+
+    async def scan_fund_flow(self, *, scan_time: str = "") -> list[tuple[str, str, InflowSignal]]:
+        """Layer-3 scan: main-force inflow continuity over the basket.
+
+        A symbol alerts when its main-force net inflow has been positive for
+        >= 3 consecutive daily rows (today's running total included) and
+        today's super-large bucket is also positive. One alert per symbol per
+        calendar day; escalation mid-day is intentionally not modelled — the
+        continuity is the signal, not its intraday drift.
+        """
+        from src.tools.fund_flow_tool import _fetch_symbol_flow
+
+        today = datetime.fromtimestamp(self._now(), _TZ).strftime("%Y-%m-%d")
+        self._last_fund_flow_scan_at = self._now()
+        fired: list[tuple[str, str, InflowSignal]] = []
+        for symbol, (name, _sector) in self._basket.items():
+            if self._fund_flow_alerted.get(symbol) == today:
+                continue
+            try:
+                payload = await asyncio.to_thread(
+                    _fetch_symbol_flow, symbol, period="daily", days=5
+                )
+            except Exception as exc:  # noqa: BLE001 - one symbol must not kill the scan
+                logger.warning("intraday monitor fund flow failed for %s: %s", symbol, exc)
+                continue
+            rows = payload.get("rows") if isinstance(payload, dict) else None
+            if not rows:
+                continue
+            signal = detect_inflow_continuity(rows)
+            if signal is None:
+                continue
+            self._fund_flow_alerted[symbol] = today
+            fired.append((symbol, name, signal))
+            self._fund_flow_signals.insert(
+                0,
+                {
+                    "symbol": symbol,
+                    "name": name,
+                    "days": signal.days,
+                    "today_main": round(signal.today_main / 1e8, 2),
+                    "today_super_large": round(signal.today_super_large / 1e8, 2),
+                    "date": today,
+                },
+            )
+        del self._fund_flow_signals[self._max_alerts:]
+        if fired:
+            text = format_inflow_alert(fired, scan_time or datetime.now(_TZ).strftime("%H:%M"))
+            if text:
+                try:
+                    await self._push(text)
+                except Exception:  # noqa: BLE001 - push failure must not kill the loop
+                    logger.error("intraday monitor fund-flow push failed", exc_info=True)
+        return fired
+
     def status(self) -> dict:
         """Return a JSON-ready status snapshot for the Web UI card."""
         return {
@@ -244,6 +317,11 @@ class IntradayVolumeMonitor:
                 for symbol, (name, sector) in sorted(self._basket.items())
             ],
             "alerts": list(self._alerts),
+            "fund_flow": {
+                "interval_s": self._fund_flow_interval_s,
+                "last_scan_at": self._last_fund_flow_scan_at,
+                "signals": list(self._fund_flow_signals),
+            },
         }
 
 

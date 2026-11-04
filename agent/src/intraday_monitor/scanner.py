@@ -40,7 +40,9 @@ DEFAULT_SURGE_MULTIPLE = 4.0
 DEFAULT_BASELINE_BARS = 30
 DEFAULT_MIN_CONSECUTIVE = 2
 
-# Default core basket: semiconductors, other STAR-50 heavyweights, CATL, PCB.
+# Default core basket: semiconductors, other STAR-50 heavyweights, CATL, PCB,
+# plus two broker bellwethers as the layer-3 style confirmation (a broker
+# volume surge alongside tech is the classic incremental-money tell).
 # Values are Vibe-Trading symbols; sector powers the board-level escalation.
 DEFAULT_BASKET: dict[str, str] = {
     "688981.SH": ("中芯国际", "半导体"),
@@ -57,6 +59,8 @@ DEFAULT_BASKET: dict[str, str] = {
     "002916.SZ": ("深南电路", "PCB"),
     "600183.SH": ("生益科技", "PCB"),
     "002384.SZ": ("东山精密", "PCB"),
+    "600030.SH": ("中信证券", "券商"),
+    "300059.SZ": ("东方财富", "券商"),
 }
 
 # A same-sector signal count at or above this escalates to a board-level alert.

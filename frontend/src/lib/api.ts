@@ -1130,6 +1130,15 @@ export interface IntradayMonitorAlert {
   prev_session_high: number;
 }
 
+export interface IntradayFundFlowSignal {
+  symbol: string;
+  name: string;
+  days: number;
+  today_main: number;
+  today_super_large: number;
+  date: string;
+}
+
 export interface IntradayMonitorStatus {
   enabled: boolean;
   running?: boolean;
@@ -1140,4 +1149,9 @@ export interface IntradayMonitorStatus {
   last_scan_at?: number;
   basket?: { symbol: string; name: string; sector: string }[];
   alerts?: IntradayMonitorAlert[];
+  fund_flow?: {
+    interval_s?: number;
+    last_scan_at?: number;
+    signals?: IntradayFundFlowSignal[];
+  };
 }

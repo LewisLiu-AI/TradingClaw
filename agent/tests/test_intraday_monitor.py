@@ -13,6 +13,7 @@ from datetime import datetime
 
 import pytest
 
+from src.intraday_monitor.fundflow import detect_inflow_continuity, format_inflow_alert
 from src.intraday_monitor.monitor import IntradayVolumeMonitor, in_trading_hours
 from src.intraday_monitor.scanner import (
     DEFAULT_BASKET,
@@ -203,5 +204,114 @@ def test_monitor_scan_cooldown_and_escalation(monkeypatch: pytest.MonkeyPatch):
                 bar["amount"] *= 2.5
         fired = await mon.scan_once()
         assert len(fired) == 1 and len(pushed) == 2
+
+    asyncio.run(_scenario())
+
+
+# ---------------------------------------------------------------------------
+# Layer 3: fund-flow continuity
+# ---------------------------------------------------------------------------
+
+
+def _flow_row(date: str, main: float, super_large: float) -> dict:
+    return {
+        "timestamp": date,
+        "main": main,
+        "small": -main / 2,
+        "medium": -main / 4,
+        "large": main / 2,
+        "super_large": super_large,
+    }
+
+
+def test_inflow_continuity_three_days_qualifies():
+    rows = [
+        _flow_row("2026-10-31", 4.5e8, 1.6e8),
+        _flow_row("2026-11-02", 3.9e8, 1.6e8),
+        _flow_row("2026-11-03", 4.5e8, -0.9e8),
+        _flow_row("2026-11-04", 5.8e8, 2.4e8),
+    ]
+    signal = detect_inflow_continuity(rows)
+    assert signal is not None
+    assert signal.days == 4
+    assert signal.today_super_large == 2.4e8
+
+
+def test_inflow_continuity_rejects_negative_super_large_today():
+    rows = [
+        _flow_row("2026-11-02", 3.9e8, 1e8),
+        _flow_row("2026-11-03", 4.5e8, 1e8),
+        _flow_row("2026-11-04", 5.8e8, -0.5e8),
+    ]
+    assert detect_inflow_continuity(rows) is None
+
+
+def test_inflow_continuity_rejects_broken_streak():
+    rows = [
+        _flow_row("2026-11-02", -1.3e8, 1e8),
+        _flow_row("2026-11-03", 4.5e8, 1e8),
+        _flow_row("2026-11-04", 5.8e8, 2.4e8),
+    ]
+    assert detect_inflow_continuity(rows) is None
+
+
+def test_inflow_continuity_handles_unsorted_rows():
+    rows = [
+        _flow_row("2026-11-04", 5.8e8, 2.4e8),
+        _flow_row("2026-11-02", 3.9e8, 1e8),
+        _flow_row("2026-11-03", 4.5e8, 1e8),
+    ]
+    assert detect_inflow_continuity(rows) is not None
+
+
+def test_format_inflow_alert_renders_yi():
+    from src.intraday_monitor.fundflow import InflowSignal
+
+    text = format_inflow_alert(
+        [("688981.SH", "中芯国际", InflowSignal(3, 5.75e8, 2.42e8, "2026-11-04"))],
+        "13:30",
+    )
+    assert "连续 3 日净流入" in text
+    assert "+5.75亿" in text and "+2.42亿" in text
+
+
+def test_monitor_fund_flow_scan_daily_dedupe(monkeypatch: pytest.MonkeyPatch):
+    import asyncio
+
+    from src.intraday_monitor import monitor as monitor_mod
+    rows = [
+        _flow_row("2026-11-02", 3.9e8, 1e8),
+        _flow_row("2026-11-03", 4.5e8, 1e8),
+        _flow_row("2026-11-04", 5.8e8, 2.4e8),
+    ]
+
+    def fake_flow(symbol, *, period, days):  # noqa: ANN001
+        return {"symbol": symbol, "rows": list(rows)}
+
+    pushed: list[str] = []
+
+    async def _push(text: str) -> None:
+        pushed.append(text)
+
+    clock = _FakeClock(datetime.fromisoformat("2026-11-04 13:35").replace(tzinfo=monitor_mod._TZ))
+    mon = monitor_mod.IntradayVolumeMonitor(
+        basket={"688981.SH": ("中芯国际", "半导体")},
+        push_fn=_push,
+        now_fn=clock,
+    )
+
+    from src.tools import fund_flow_tool
+
+    monkeypatch.setattr(fund_flow_tool, "_fetch_symbol_flow", fake_flow)
+
+    async def _scenario() -> None:
+        fired = await mon.scan_fund_flow()
+        assert len(fired) == 1 and fired[0][0] == "688981.SH"
+        assert len(pushed) == 1
+        # Same day: suppressed even though the continuity still holds.
+        assert await mon.scan_fund_flow() == []
+        assert len(pushed) == 1
+        status = mon.status()
+        assert status["fund_flow"]["signals"][0]["days"] == 3
 
     asyncio.run(_scenario())

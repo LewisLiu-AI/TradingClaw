@@ -262,6 +262,23 @@ export function Scheduled() {
           ) : (
             <p className={hintClass}>暂无触发记录（触发时同步推送飞书）。</p>
           )}
+          {monitorStatus.fund_flow?.signals && monitorStatus.fund_flow.signals.length > 0 && (
+            <div className="space-y-1">
+              <div className="text-xs font-medium text-muted-foreground">
+                资金面 · 主力连续净流入
+              </div>
+              <ul className="space-y-1 text-sm">
+                {monitorStatus.fund_flow.signals.slice(0, 6).map((s) => (
+                  <li key={`${s.symbol}-${s.date}`} className="flex items-center justify-between gap-2">
+                    <span>{s.name}({s.symbol})</span>
+                    <span className="text-xs text-muted-foreground">
+                      连续 {s.days} 日 · 今日主力 +{s.today_main}亿 / 超大单 +{s.today_super_large}亿
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           <div className="flex flex-wrap gap-1">
             {(monitorStatus.basket ?? []).map((s) => (
               <span key={s.symbol} className="rounded-full bg-muted px-2 py-0.5 text-xs">
