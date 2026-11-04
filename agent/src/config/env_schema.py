@@ -285,6 +285,12 @@ class AgentTuningConfig(_EnvBase):
     vibe_trading_enable_scheduler: EnvBool = Field(
         alias="VIBE_TRADING_ENABLE_SCHEDULER", default=False,
     )
+    vibe_trading_enable_intraday_monitor: EnvBool = Field(
+        alias="VIBE_TRADING_ENABLE_INTRADAY_MONITOR", default=False,
+    )
+    vibe_trading_intraday_monitor_interval_s: int = Field(
+        alias="VIBE_TRADING_INTRADAY_MONITOR_INTERVAL_S", default=300,
+    )
     vibe_trading_channels_auto_start: EnvBool = Field(
         alias="VIBE_TRADING_CHANNELS_AUTO_START", default=False,
     )

@@ -145,6 +145,10 @@ from src.api.scheduled_routes import (  # noqa: E402
     _start_scheduled_research_executor,
     _stop_scheduled_research_executor,
 )
+from src.intraday_monitor.monitor import (  # noqa: E402
+    start_intraday_monitor,
+    stop_intraday_monitor,
+)
 from src.api.juliang_quota_watch import JuliangQuotaWatcher  # noqa: E402
 
 _juliang_quota_watcher = JuliangQuotaWatcher()
@@ -157,6 +161,7 @@ async def _run_startup_preflight() -> None:
 
     run_preflight(console)
     _start_scheduled_research_executor()
+    start_intraday_monitor()
     _juliang_quota_watcher.start()
     from src.config.accessor import get_env_config
 
@@ -169,6 +174,7 @@ async def _stop_scheduled_research_on_shutdown() -> None:
     """Stop the scheduled research executor on server shutdown."""
     await _stop_channel_runtime()
     await _stop_scheduled_research_executor()
+    await stop_intraday_monitor()
     await _juliang_quota_watcher.stop()
 
 
