@@ -49,7 +49,13 @@ from src.tools.redaction import redact_payload
 
 RUNS_DIR = Path(__file__).resolve().parents[2] / "runs"
 SESSIONS_DIR = Path(__file__).resolve().parents[2] / "sessions"
-KEEP_RECENT = 3
+# Tool results kept verbatim by layer-1 microcompact. Pruning to 3 caused the
+# model to lose the data it had just fetched and re-request the same series in
+# later iterations (measured: identical get_market_data called 6x in one run),
+# which costs far more than the tokens it saves — every re-fetch is a full LLM
+# round-trip. 8 covers a typical multi-tool batch (one iteration often issues
+# 5-6 parallel calls) without unbounded growth.
+KEEP_RECENT = 8
 TOOL_RESULT_LIMIT = 10_000
 LLM_USAGE_ARTIFACT = "llm_usage.json"
 

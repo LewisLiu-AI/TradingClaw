@@ -442,6 +442,13 @@ def _ensure_dotenv() -> None:
             loaded = candidate
             break
     _dotenv_loaded = True
+    # Import-order guard: some CLI modules read get_env_config() while the
+    # module itself is being imported (cli/theme.py resolves the terminal theme
+    # at import time), which caches an EnvConfig built from a still-empty
+    # os.environ. Without this reset the singleton keeps those defaults forever
+    # and preflight reports "LANGCHAIN_MODEL_NAME not set" even though the .env
+    # file is valid. Rebuilding here is cheap and idempotent.
+    reset_env_config()
     # P08 R1: one-time, behavior-preserving diagnostic so a stale or
     # shadowed .env is observable instead of costing hours. The path is
     # redacted to a symbolic slot label and the API key is never logged.

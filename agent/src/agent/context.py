@@ -25,6 +25,9 @@ You handle backtesting, factor analysis, options pricing, risk audits, research 
 
 ## Tools
 
+One line per tool. The full parameter schema for every tool is attached in this
+request's tool definitions — read it before calling instead of guessing arguments.
+
 {tool_descriptions}
 
 ## Skills (use load_skill to read full docs)
@@ -250,19 +253,37 @@ class ContextBuilder:
         messages.append({"role": "user", "content": enriched})
         return messages
 
+    # Max characters of a tool description kept in the prompt-level tool index.
+    # The authoritative parameter schema travels in the request's ``tools``
+    # payload; repeating it here doubled the per-iteration prompt cost
+    # (measured: 42 tools = 23.6k chars expanded vs 4.6k chars as an index).
+    _TOOL_SUMMARY_MAX = 120
+
     def _format_tool_descriptions(self) -> str:
-        """Format tool descriptions."""
+        """Format a compact tool index: one line per tool.
+
+        Full parameter detail is delivered by the OpenAI-format tool schemas
+        in the same request, so only the name plus the first sentence of the
+        description is kept here. Keeps the model aware of which tools exist
+        without paying for the same information twice.
+
+        Returns:
+            Newline-separated ``- name: summary`` lines.
+        """
         lines = []
         for tool in self.registry._tools.values():
-            params = tool.parameters.get("properties", {})
-            required = tool.parameters.get("required", [])
-            param_parts = []
-            for pname, pschema in params.items():
-                req = " (required)" if pname in required else ""
-                param_parts.append(f"    - {pname}: {pschema.get('description', pschema.get('type', ''))}{req}")
-            param_text = "\n".join(param_parts) if param_parts else "    (no params)"
-            lines.append(f"### {tool.name}\n{tool.description}\n  Params:\n{param_text}")
-        return "\n\n".join(lines)
+            desc = " ".join((tool.description or "").split())
+            if len(desc) > self._TOOL_SUMMARY_MAX:
+                cut = desc[: self._TOOL_SUMMARY_MAX]
+                # Prefer cutting at a sentence boundary, else hard-truncate.
+                for sep in (". ", "。", "; "):
+                    idx = cut.rfind(sep)
+                    if idx > 40:
+                        cut = cut[: idx + 1]
+                        break
+                desc = cut.rstrip()
+            lines.append(f"- {tool.name}: {desc}")
+        return "\n".join(lines)
 
     @staticmethod
     def format_tool_result(tool_call_id: str, tool_name: str, result: str) -> Dict[str, Any]:
