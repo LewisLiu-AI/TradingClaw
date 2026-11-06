@@ -21,16 +21,20 @@ from src.agent.tools import BaseTool
 
 # Eastmoney datacenter report endpoint + the shareholder-number report id.
 _DATACENTER_URL = "https://datacenter-web.eastmoney.com/api/data/v1/get"
-_REPORT_NAME = "RPT_HOLDERNUMLATEST"
 
-# Report columns we surface, mapped to the API's field names. ``AVG_MARKET_CAP``
-# is the per-account average holding value (total market cap / holder count);
-# the older ``AVG_HOLD_AMT`` alias was removed upstream and made the whole
-# request fail with ``code=9501 返回字段不存在``.
-_COLUMNS = (
-    "SECUCODE,SECURITY_CODE,END_DATE,HOLDER_NUM,HOLDER_NUM_CHANGE,"
-    "HOLDER_NUM_RATIO,AVG_HOLD_NUM,AVG_MARKET_CAP,TOTAL_MARKET_CAP"
-)
+# Two reports exist upstream and they are not interchangeable:
+#
+# * ``RPT_HOLDERNUMLATEST`` — one row, the most recent disclosure only, with the
+#   provider-computed change/ratio/avg-holding columns. It has no history, so
+#   ``max_periods`` could only ever yield a single period.
+# * ``RPT_F10_EH_HOLDERNUM`` — the full quarterly series (holder count and
+#   per-account holding value per report period). Used here.
+#
+# Either report fails wholesale (HTTP 200 with ``success: false`` and
+# ``code: 9501 <field>返回字段不存在``) if any requested column was removed
+# upstream, so the column list is kept minimal and verified against live data.
+_REPORT_NAME = "RPT_F10_EH_HOLDERNUM"
+_COLUMNS = "SECUCODE,SECURITY_CODE,END_DATE,HOLDER_TOTAL_NUM,AVG_HOLD_AMT,NOTICE_DATE"
 
 # Hard cap on returned periods so a long history cannot bloat the payload.
 _MAX_PERIODS = 24
@@ -45,10 +49,13 @@ class ShareholderCountTool(BaseTool):
     name = "get_shareholder_count"
     description = (
         "Fetch mainland A-share quarterly shareholder count (股东户数) from the "
-        "Eastmoney datacenter: holder count per report period, quarter-over-quarter "
-        "change (absolute and percent), and average holding (shares and market value) "
-        "per account. Markets: China A-shares only (.SH / .SZ / .BJ). "
-        'Example: {"code": "600519.SH"}.'
+        "Eastmoney F10 series: holder count per report period, the derived "
+        "quarter-over-quarter change (absolute and percent), the per-account "
+        "average holding value, and each period's disclosure date. Returns the "
+        "most recent periods, newest first; the oldest period in the window has "
+        "no predecessor and therefore no change value. Markets: China A-shares "
+        "only (.SH / .SZ / .BJ). Example: {\"code\": \"600519.SH\", "
+        "\"max_periods\": 8}."
     )
     parameters = {
         "type": "object",
@@ -166,7 +173,35 @@ def _parse_periods(payload: Any) -> list[dict]:
         record = _normalize_row(row)
         if record is not None:
             periods.append(record)
+    _attach_period_changes(periods)
     return periods
+
+
+def _attach_period_changes(periods: list[dict]) -> None:
+    """Fill ``holder_count_change``/``_pct`` from consecutive periods in place.
+
+    The F10 series carries holder counts only, not the quarter-over-quarter
+    delta, so it is derived against the next-older period. The oldest period in
+    the returned window has no predecessor and keeps ``None`` for both — never
+    zero, which would read as "unchanged".
+
+    Args:
+        periods: Period records ordered newest-first (mutated in place).
+    """
+    for index, record in enumerate(periods):
+        current = record.get("holder_count")
+        previous = (
+            periods[index + 1].get("holder_count")
+            if index + 1 < len(periods)
+            else None
+        )
+        if current is None or previous in (None, 0):
+            record["holder_count_change"] = None
+            record["holder_count_change_pct"] = None
+            continue
+        change = current - previous
+        record["holder_count_change"] = change
+        record["holder_count_change_pct"] = change / previous * 100
 
 
 def _normalize_row(row: Any) -> dict | None:
@@ -180,22 +215,22 @@ def _normalize_row(row: Any) -> dict | None:
 
     Returns:
         ``{end_date, holder_count, holder_count_change, holder_count_change_pct,
-        avg_hold_shares, avg_hold_amount, total_market_cap}`` or ``None``.
+        avg_hold_amount, notice_date}`` or ``None``. The change fields are
+        placeholders filled by :func:`_attach_period_changes`.
     """
     if not isinstance(row, dict):
         return None
     end_date = _clean_date(row.get("END_DATE"))
-    holder_count = _to_number(row.get("HOLDER_NUM"))
+    holder_count = _to_number(row.get("HOLDER_TOTAL_NUM"))
     if end_date is None and holder_count is None:
         return None
     return {
         "end_date": end_date,
         "holder_count": holder_count,
-        "holder_count_change": _to_number(row.get("HOLDER_NUM_CHANGE")),
-        "holder_count_change_pct": _to_number(row.get("HOLDER_NUM_RATIO")),
-        "avg_hold_shares": _to_number(row.get("AVG_HOLD_NUM")),
-        "avg_hold_amount": _to_number(row.get("AVG_MARKET_CAP")),
-        "total_market_cap": _to_number(row.get("TOTAL_MARKET_CAP")),
+        "holder_count_change": None,
+        "holder_count_change_pct": None,
+        "avg_hold_amount": _to_number(row.get("AVG_HOLD_AMT")),
+        "notice_date": _clean_date(row.get("NOTICE_DATE")),
     }
 
 
