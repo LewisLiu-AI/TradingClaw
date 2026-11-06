@@ -203,6 +203,8 @@ async def _deliver_scheduled_result(host, content: str, job) -> None:
     session_map = getattr(runtime, "_session_map", None) or {}
     for channel_name in channels:
         targets = [key for key in session_map if key.partition(":")[0] == channel_name]
+        if not targets:
+            targets = _fallback_scheduled_targets(runtime, channel_name)
         for key in targets:
             _, sep, chat_id = key.partition(":")
             if not sep:
@@ -216,6 +218,28 @@ async def _deliver_scheduled_result(host, content: str, job) -> None:
                 )
             )
             logger.info("scheduled result queued for %s:%s", channel_name, chat_id)
+
+
+def _fallback_scheduled_targets(runtime, channel_name: str) -> list[str]:
+    """Return fixed targets for a channel that has no inbound-bound chat.
+
+    Push-only channels (the MyFinance app) never receive an inbound message, so
+    they never appear in the runtime session map. Such a channel declares its
+    own ``scheduled_targets()``; anything else keeps the historical behaviour
+    of "no session, no delivery".
+    """
+    manager = getattr(runtime, "manager", None)
+    channel = getattr(manager, "channels", {}).get(channel_name) if manager else None
+    if channel is None:
+        return []
+    try:
+        chat_ids = channel.scheduled_targets()
+    except Exception:  # noqa: BLE001 - one bad channel must not break the rest
+        logger.warning(
+            "scheduled result: %s.scheduled_targets() failed", channel_name, exc_info=True
+        )
+        return []
+    return [f"{channel_name}:{chat_id}" for chat_id in chat_ids if chat_id]
 
 
 def _get_scheduled_research_executor():

@@ -151,6 +151,17 @@ class BaseChannel(ABC):
 
     # --- Permission helpers ---
 
+    def scheduled_targets(self) -> list[str]:
+        """Return fixed chat ids that receive scheduled results.
+
+        Channels whose users never send inbound messages (a push-only channel
+        such as the MyFinance app) have no ``channel:chat_id`` entry in the
+        runtime session map, so scheduled delivery cannot find a target for
+        them. Override this to declare where results should go; the default
+        keeps the session-map-only behaviour.
+        """
+        return []
+
     @property
     def supports_streaming(self) -> bool:
         """True when config enables streaming AND this subclass implements send_delta."""
