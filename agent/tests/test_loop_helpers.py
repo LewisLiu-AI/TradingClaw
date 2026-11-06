@@ -10,6 +10,8 @@ import pytest
 
 from src.agent.loop import (
     KEEP_RECENT,
+    TOOL_RESULT_LIMIT,
+    _clip_tool_result,
     COLLAPSE_PRESERVE_RECENT,
     COLLAPSE_TEXT_MIN,
     MICROCOMPACT_THRESHOLD,
@@ -339,3 +341,27 @@ class TestNormalizeToolRunDir:
         args = {"run_dir": absolute_run_dir}
         out = _normalize_tool_run_dir(args, "/tmp/run_123")
         assert out["run_dir"] == absolute_run_dir
+
+
+# --------------------------------------------------
+# _clip_tool_result: oversized results must announce the cut
+# --------------------------------------------------
+
+
+def test_clip_leaves_small_result_untouched():
+    payload = '{"ok": true, "data": "small"}'
+    assert _clip_tool_result(payload) == payload
+
+
+def test_clip_marks_truncation_with_sizes():
+    payload = "x" * (TOOL_RESULT_LIMIT * 2)
+    clipped = _clip_tool_result(payload)
+    assert clipped.startswith("x" * 100)
+    assert "RESULT TRUNCATED" in clipped
+    assert str(len(payload)) in clipped
+    assert str(TOOL_RESULT_LIMIT) in clipped
+
+
+def test_clip_marker_warns_against_reading_absence_as_zero():
+    clipped = _clip_tool_result("y" * (TOOL_RESULT_LIMIT + 1))
+    assert "not evidence that the value is absent" in clipped

@@ -359,3 +359,101 @@ class TestErrorEnvelope:
         )
         assert payload["ok"] is False
         assert "period" in payload["error"]
+
+    def test_default_projection_keeps_only_core_fields(self):
+        row = {"REPORT_DATE": "2024-12-31", "REPORT_DATE_NAME": "2024年报"}
+        row.update({f"JUNK_{i}": i for i in range(150)})
+        row.update({"TOTAL_OPERATE_INCOME": 100.0, "PARENT_NETPROFIT": 9.0})
+        payload_in = {"result": {"data": [row]}}
+        with patch(
+            "src.tools.financial_statements_tool.resolve_secid",
+            return_value="1.600519",
+        ), patch(
+            "src.tools.financial_statements_tool.get_json",
+            return_value=payload_in,
+        ):
+            text = FinancialStatementsTool().execute(
+                code="600519.SH", statement="income", period="annual"
+            )
+
+        payload = json.loads(text)
+        period = payload["data"]["600519.SH"]["periods"][0]
+        assert payload["fields_mode"] == "core"
+        assert "TOTAL_OPERATE_INCOME" in period
+        assert not any(key.startswith("JUNK_") for key in period)
+        assert len(period) < 30
+
+    def test_fields_star_returns_every_provider_field(self):
+        row = {"REPORT_DATE": "2024-12-31"}
+        row.update({f"RAW_{i}": i for i in range(60)})
+        payload_in = {"result": {"data": [row]}}
+        with patch(
+            "src.tools.financial_statements_tool.resolve_secid",
+            return_value="1.600519",
+        ), patch(
+            "src.tools.financial_statements_tool.get_json",
+            return_value=payload_in,
+        ):
+            text = FinancialStatementsTool().execute(
+                code="600519.SH", statement="indicators", fields=["*"]
+            )
+
+        payload = json.loads(text)
+        period = payload["data"]["600519.SH"]["periods"][0]
+        assert "fields_mode" not in payload
+        assert sum(1 for key in period if key.startswith("RAW_")) == 60
+
+    def test_explicit_fields_are_honoured(self):
+        payload_in = {
+            "result": {
+                "data": [
+                    {
+                        "REPORT_DATE": "2024-12-31",
+                        "TOTAL_OPERATE_INCOME": 100.0,
+                        "RESEARCH_EXPENSE": 3.0,
+                        "MANAGE_EXPENSE": 7.0,
+                    }
+                ]
+            }
+        }
+        with patch(
+            "src.tools.financial_statements_tool.resolve_secid",
+            return_value="1.600519",
+        ), patch(
+            "src.tools.financial_statements_tool.get_json",
+            return_value=payload_in,
+        ):
+            text = FinancialStatementsTool().execute(
+                code="600519.SH",
+                statement="income",
+                fields=["RESEARCH_EXPENSE"],
+            )
+
+        period = json.loads(text)["data"]["600519.SH"]["periods"][0]
+        assert "RESEARCH_EXPENSE" in period
+        assert "MANAGE_EXPENSE" not in period
+
+    def test_limit_caps_returned_periods(self):
+        rows = [
+            {"REPORT_DATE": f"20{20 - i}-12-31", "NETPROFIT": float(i)}
+            for i in range(20)
+        ]
+        payload_in = {"result": {"data": rows}}
+        with patch(
+            "src.tools.financial_statements_tool.resolve_secid",
+            return_value="1.600519",
+        ), patch(
+            "src.tools.financial_statements_tool.get_json",
+            return_value=payload_in,
+        ):
+            default_text = FinancialStatementsTool().execute(
+                code="600519.SH", statement="income", period="quarter"
+            )
+            tight_text = FinancialStatementsTool().execute(
+                code="600519.SH", statement="income", period="quarter", limit=3
+            )
+
+        default_periods = json.loads(default_text)["data"]["600519.SH"]["periods"]
+        tight_periods = json.loads(tight_text)["data"]["600519.SH"]["periods"]
+        assert len(default_periods) == 8
+        assert len(tight_periods) == 3

@@ -16,6 +16,12 @@ logger = logging.getLogger(__name__)
 _VALID_FREQS = ("annual", "quarterly", "ttm")
 _VALID_SOURCES = ("auto", "sec", "eastmoney", "tushare")
 
+# Suffixes the loader can actually resolve. It is SEC-EDGAR backed in this
+# build, so A-share/HK/Crypto symbols resolve no CIK and used to come back as
+# ``ok: true`` with every value null — which reads to the model as "this company
+# reports nothing" rather than "unsupported market".
+_US_SUFFIXES = ("US",)
+
 
 def _error(message: str) -> str:
     """Build the failure envelope as a JSON string.
@@ -27,6 +33,42 @@ def _error(message: str) -> str:
         A strict JSON ``{"ok": false, "error": ...}`` string.
     """
     return json.dumps({"ok": False, "error": message}, ensure_ascii=False)
+
+
+def _unsupported_symbols(symbols: list[str]) -> list[str]:
+    """Return the symbols whose suffix the loader cannot serve.
+
+    Args:
+        symbols: Symbols from the tool call.
+
+    Returns:
+        Symbols without a ``.US`` suffix (A-share, HK, or bare tickers).
+    """
+    unsupported = []
+    for symbol in symbols:
+        suffix = symbol.rpartition(".")[2].upper()
+        if suffix not in _US_SUFFIXES:
+            unsupported.append(symbol)
+    return unsupported
+
+
+def _panel_is_empty(data: dict[str, list[dict[str, Any]]]) -> bool:
+    """Return whether every value in the panel is null.
+
+    Args:
+        data: ``{field: [row, ...]}`` as built from the loader panel.
+
+    Returns:
+        True when no field carries a single non-null value.
+    """
+    for rows in data.values():
+        for row in rows:
+            for key, value in row.items():
+                if key == "date":
+                    continue
+                if value is not None:
+                    return False
+    return True
 
 
 def _json_safe(value: Any) -> Any:
@@ -66,7 +108,9 @@ class GetFundamentalsTool(BaseTool):
         "Fetch PIT-safe fundamental fields as daily wide panels aligned by filed "
         "date. Returns {field: date x symbol records}. Fields use the unified "
         "fundamental schema, e.g. roe, gross_profitability, net_income, "
-        "shares_diluted. Default freq is ttm and PIT mode is on."
+        "shares_diluted. Default freq is ttm and PIT mode is on. US listings only "
+        "(SEC EDGAR, '.US' suffix) — for A-share (.SH/.SZ/.BJ) or Hong Kong (.HK) "
+        "statements use get_financial_statements instead."
     )
     parameters = {
         "type": "object",
@@ -103,7 +147,11 @@ class GetFundamentalsTool(BaseTool):
             "source": {
                 "type": "string",
                 "enum": list(_VALID_SOURCES),
-                "description": "Fundamental source router.",
+                "description": (
+                    "Fundamental source router. Only 'auto' and 'sec' are wired "
+                    "up in this build (both SEC EDGAR); 'eastmoney' and 'tushare' "
+                    "are declared but return an error."
+                ),
                 "default": "auto",
             },
             "index": {
@@ -158,6 +206,21 @@ class GetFundamentalsTool(BaseTool):
         if source not in _VALID_SOURCES:
             return _error(f"source must be one of {list(_VALID_SOURCES)}")
 
+        unsupported = _unsupported_symbols(symbols)
+        if unsupported:
+            return _error(
+                "get_fundamentals is SEC-EDGAR backed and serves US listings only; "
+                f"unsupported symbol(s): {', '.join(unsupported)}. For A-share "
+                "( .SH/.SZ/.BJ) or Hong Kong (.HK) statements use "
+                "get_financial_statements instead."
+            )
+        if source in ("eastmoney", "tushare"):
+            return _error(
+                f"source='{source}' is declared but not implemented in this build "
+                "(the panel loader supports 'auto' and 'sec', both SEC EDGAR). "
+                "Use get_financial_statements for A-share/HK statements."
+            )
+
         index_arg = kwargs.get("index")
         if index_arg is None or isinstance(index_arg, pd.DatetimeIndex):
             index = index_arg
@@ -189,6 +252,18 @@ class GetFundamentalsTool(BaseTool):
         except Exception as exc:  # noqa: BLE001 - tool facade must envelope failures
             logger.warning("get_fundamentals failed: %s", exc)
             return _error(str(exc))
+
+        if _panel_is_empty(data):
+            # A resolved-but-empty panel means no filings were found. Reporting
+            # ok:true here would let the model conclude the company has no
+            # fundamentals at all, so fail loudly and say why.
+            return _error(
+                "no fundamental data for "
+                f"{', '.join(symbols)} between {start.strip()} and {end.strip()}: "
+                "no SEC filing matched. Check the ticker (US listings need the "
+                "'.US' suffix, e.g. 'AAPL.US') or widen the date range. For "
+                "A-share/HK statements use get_financial_statements."
+            )
 
         envelope = {
             "ok": True,

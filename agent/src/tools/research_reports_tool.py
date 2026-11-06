@@ -21,6 +21,7 @@ re-implements provider plumbing.
 
 from __future__ import annotations
 
+import datetime
 import json
 import logging
 from typing import Any
@@ -38,6 +39,12 @@ logger = logging.getLogger(__name__)
 # Eastmoney research-report list endpoint. qType=0 selects individual-stock
 # reports; the response carries a ``data`` array of one row per report.
 _REPORT_LIST_URL = "https://reportapi.eastmoney.com/report/list"
+
+# The endpoint rejects any request that omits ``beginTime``/``endTime`` with
+# HTTP 400 ("Required String parameter 'beginTime' is not present"), so a
+# window must always be sent. A wide default keeps low-coverage names from
+# looking empty; the row cap below still bounds the payload.
+_LOOKBACK_DAYS = 1825
 
 # THS consensus-forecast endpoint. Returns per-forward-year mean analyst EPS.
 _THS_CONSENSUS_URL = "https://basic.10jqka.com.cn/api/stock/profit_forecast/"
@@ -124,6 +131,7 @@ class ResearchReportsTool(BaseTool):
                     "qType": "0",
                     "pageSize": str(limit),
                     "pageNo": "1",
+                    **_date_window(),
                 },
             )
         except Exception as exc:  # noqa: BLE001 - surface any fetch failure as envelope
@@ -155,6 +163,21 @@ class ResearchReportsTool(BaseTool):
 def _bare_code(code: str) -> str:
     """Return the numeric stock code without its exchange suffix."""
     return code.rpartition(".")[0]
+
+
+def _date_window(today: datetime.date | None = None) -> dict[str, str]:
+    """Build the ``beginTime``/``endTime`` pair the report endpoint requires.
+
+    Args:
+        today: Reference date, defaults to the current local date.
+
+    Returns:
+        ``{"beginTime": "YYYY-MM-DD", "endTime": "YYYY-MM-DD"}`` covering the
+        last ``_LOOKBACK_DAYS`` days, inclusive of today.
+    """
+    end = today or datetime.date.today()
+    begin = end - datetime.timedelta(days=_LOOKBACK_DAYS)
+    return {"beginTime": begin.isoformat(), "endTime": end.isoformat()}
 
 
 def _clamp_limit(value: Any) -> int:

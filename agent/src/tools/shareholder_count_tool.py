@@ -23,10 +23,13 @@ from src.agent.tools import BaseTool
 _DATACENTER_URL = "https://datacenter-web.eastmoney.com/api/data/v1/get"
 _REPORT_NAME = "RPT_HOLDERNUMLATEST"
 
-# Report columns we surface, mapped to the API's field names.
+# Report columns we surface, mapped to the API's field names. ``AVG_MARKET_CAP``
+# is the per-account average holding value (total market cap / holder count);
+# the older ``AVG_HOLD_AMT`` alias was removed upstream and made the whole
+# request fail with ``code=9501 返回字段不存在``.
 _COLUMNS = (
     "SECUCODE,SECURITY_CODE,END_DATE,HOLDER_NUM,HOLDER_NUM_CHANGE,"
-    "HOLDER_NUM_RATIO,AVG_HOLD_AMT,AVG_HOLD_NUM,TOTAL_MARKET_CAP"
+    "HOLDER_NUM_RATIO,AVG_HOLD_NUM,AVG_MARKET_CAP,TOTAL_MARKET_CAP"
 )
 
 # Hard cap on returned periods so a long history cannot bloat the payload.
@@ -191,7 +194,7 @@ def _normalize_row(row: Any) -> dict | None:
         "holder_count_change": _to_number(row.get("HOLDER_NUM_CHANGE")),
         "holder_count_change_pct": _to_number(row.get("HOLDER_NUM_RATIO")),
         "avg_hold_shares": _to_number(row.get("AVG_HOLD_NUM")),
-        "avg_hold_amount": _to_number(row.get("AVG_HOLD_AMT")),
+        "avg_hold_amount": _to_number(row.get("AVG_MARKET_CAP")),
         "total_market_cap": _to_number(row.get("TOTAL_MARKET_CAP")),
     }
 

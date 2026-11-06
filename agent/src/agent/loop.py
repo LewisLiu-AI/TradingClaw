@@ -481,6 +481,34 @@ Rules:
 {focus_section}"""
 
 
+_TRUNCATION_NOTE = (
+    "\n\n[... RESULT TRUNCATED: the full output was {total} chars, only the first "
+    "{kept} are shown above. The JSON is therefore incomplete — a field missing "
+    "from it is not evidence that the value is absent. Re-request with a narrower "
+    "scope (fewer periods/items/fields) if you need what was cut.]"
+)
+
+
+def _clip_tool_result(result: str) -> str:
+    """Clip an oversized tool result and say so explicitly.
+
+    Silent truncation used to hand the model a JSON document cut mid-object with
+    no indication, so a field that fell past the cutoff looked like an unreported
+    one — and the model would reason around a value that was actually available.
+
+    Args:
+        result: Raw tool result string.
+
+    Returns:
+        ``result`` unchanged when it fits the budget, else its head followed by a
+        marker naming the original size and how to obtain a smaller payload.
+    """
+    if len(result) <= TOOL_RESULT_LIMIT:
+        return result
+    marker = _TRUNCATION_NOTE.format(total=len(result), kept=TOOL_RESULT_LIMIT)
+    return result[:TOOL_RESULT_LIMIT] + marker
+
+
 def _is_tool_success(result: str) -> bool:
     """Return True if the tool result does not look like an error response.
 
@@ -1468,8 +1496,9 @@ class AgentLoop:
             self._called_ok.add(tc.name)
 
         status = "ok" if success else "error"
-        truncated = result[:TOOL_RESULT_LIMIT]
-        messages.append(context.format_tool_result(tc.id, tc.name, truncated))
+        messages.append(
+            context.format_tool_result(tc.id, tc.name, _clip_tool_result(result))
+        )
 
         trace_result = _redact_trace_result(result)
         trace.write_tool_result(

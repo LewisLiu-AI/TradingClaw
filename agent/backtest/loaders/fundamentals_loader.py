@@ -383,10 +383,21 @@ def _compute_derived(derived: Any, dependencies: dict[str, pd.DataFrame]) -> pd.
 
 
 def _resolve_ciks(symbols: list[str]) -> dict[str, str | None]:
+    """Resolve each symbol to its SEC CIK, tolerating the ``.US`` suffix.
+
+    ``sec_edgar_client.cik_for`` looks tickers up in SEC's company table, which
+    keys on the bare ticker (``AAPL``); the tool contract has callers pass
+    ``AAPL.US``. Resolving the raw symbol therefore never matched and every
+    symbol came back with an empty panel, so the suffix is stripped here while
+    the original symbol stays the panel column name.
+    """
     ciks: dict[str, str | None] = {}
     missing: list[str] = []
     for symbol in symbols:
-        cik = sec_edgar_client.cik_for(symbol)
+        ticker = symbol.strip()
+        if ticker.upper().endswith(".US"):
+            ticker = ticker[:-3]
+        cik = sec_edgar_client.cik_for(ticker)
         ciks[symbol] = cik
         if cik is None:
             missing.append(symbol)

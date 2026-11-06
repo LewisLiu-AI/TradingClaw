@@ -22,7 +22,7 @@ _SAMPLE_PAYLOAD = {
                 "HOLDER_NUM_CHANGE": -2000,
                 "HOLDER_NUM_RATIO": -1.05,
                 "AVG_HOLD_NUM": 6680.0,
-                "AVG_HOLD_AMT": 12345678.0,
+                "AVG_MARKET_CAP": 12345678.0,
                 "TOTAL_MARKET_CAP": 2.1e12,
             },
             {
@@ -32,7 +32,7 @@ _SAMPLE_PAYLOAD = {
                 "HOLDER_NUM_CHANGE": 1500,
                 "HOLDER_NUM_RATIO": 0.80,
                 "AVG_HOLD_NUM": 6610.0,
-                "AVG_HOLD_AMT": 12000000.0,
+                "AVG_MARKET_CAP": 12000000.0,
                 "TOTAL_MARKET_CAP": 2.0e12,
             },
         ]

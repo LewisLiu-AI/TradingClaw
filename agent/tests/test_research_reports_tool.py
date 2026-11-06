@@ -7,6 +7,7 @@ test reaches a live endpoint.
 
 from __future__ import annotations
 
+import datetime
 import json
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -91,6 +92,21 @@ def test_success_envelope_merges_reports_and_consensus():
     assert mock_em.call_args.kwargs["params"]["code"] == "600519"
     assert mock_ths.call_args.kwargs["host_key"] == "ths"
     assert mock_ths.call_args.kwargs["params"]["code"] == "600519"
+
+
+def test_report_request_always_carries_date_window():
+    """The report endpoint 400s without beginTime/endTime, so both must be sent."""
+    with patch.object(rrt, "get_json", return_value=_REPORT_PAYLOAD) as mock_em, patch.object(
+        rrt, "throttled_get", return_value=_fake_response(_THS_PAYLOAD)
+    ):
+        ResearchReportsTool().execute(code="600519.SH", limit=5)
+
+    params = mock_em.call_args.kwargs["params"]
+    assert params["beginTime"] and params["endTime"]
+    begin = datetime.date.fromisoformat(params["beginTime"])
+    end = datetime.date.fromisoformat(params["endTime"])
+    assert end >= begin
+    assert (end - begin).days == rrt._LOOKBACK_DAYS
 
 
 def test_limit_caps_returned_reports():

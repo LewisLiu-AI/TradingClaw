@@ -104,9 +104,112 @@ _SEC_CONCEPTS: dict[str, tuple[str, ...]] = {
 _VALID_STATEMENTS = ("balance", "income", "cashflow", "indicators")
 _VALID_PERIODS = ("annual", "quarter")
 
-# Defensive caps so a payload can never blow up the LLM context.
+# Defensive caps so a payload can never blow up the LLM context. ``columns: ALL``
+# returns ~200 fields per row (104-121 of them populated), so 40 periods alone
+# serialised to ~180k chars -- more than an order of magnitude over the loop's
+# 10k tool-result budget, which used to truncate the JSON mid-object.
 _MAX_PERIODS = 40
+_DEFAULT_PERIODS = 8
 _MAX_FIELDS_PER_PERIOD = 200
+
+# The reporting-period keys every projection keeps.
+_PERIOD_KEYS = ("REPORT_DATE", "REPORT_DATE_NAME")
+
+# Curated default projection per statement: the line items an equity analysis
+# actually reasons about. Callers that need a full filing pass ``fields=[...]``
+# (or ``fields=["*"]``) instead. Measured effect for one A-share, ``indicators``:
+# 40 periods x 165 fields = 179,600 chars -> 8 periods x 21 fields = ~4.4k chars.
+_CORE_FIELDS: dict[str, tuple[str, ...]] = {
+    "income": (
+        "TOTAL_OPERATE_INCOME",
+        "TOTAL_OPERATE_INCOME_YOY",
+        "OPERATE_COST",
+        "OPERATE_COST_YOY",
+        "RESEARCH_EXPENSE",
+        "SALE_EXPENSE",
+        "MANAGE_EXPENSE",
+        "FINANCE_EXPENSE",
+        "OPERATE_PROFIT",
+        "TOTAL_PROFIT",
+        "INCOME_TAX",
+        "NETPROFIT",
+        "PARENT_NETPROFIT",
+        "PARENT_NETPROFIT_YOY",
+        "DEDUCT_PARENT_NETPROFIT",
+        "DEDUCT_PARENT_NETPROFIT_YOY",
+        "BASIC_EPS",
+        "DILUTED_EPS",
+        "TOTAL_COMPRE_INCOME",
+    ),
+    "balance": (
+        "TOTAL_ASSETS",
+        "TOTAL_CURRENT_ASSETS",
+        "TOTAL_NONCURRENT_ASSETS",
+        "MONETARYFUNDS",
+        "ACCOUNTS_RECE",
+        "NOTE_ACCOUNTS_RECE",
+        "INVENTORY",
+        "FIXED_ASSET",
+        "CIP",
+        "INTANGIBLE_ASSET",
+        "GOODWILL",
+        "TOTAL_LIABILITIES",
+        "TOTAL_CURRENT_LIAB",
+        "SHORT_LOAN",
+        "ACCOUNTS_PAYABLE",
+        "CONTRACT_LIAB",
+        "LONG_LOAN",
+        "TOTAL_EQUITY",
+        "TOTAL_PARENT_EQUITY",
+        "MINORITY_EQUITY",
+        "SHARE_CAPITAL",
+        "TOTAL_LIAB_EQUITY",
+    ),
+    "cashflow": (
+        "SALES_SERVICES",
+        "TOTAL_OPERATE_INFLOW",
+        "TOTAL_OPERATE_OUTFLOW",
+        "PAY_ALL_TAX",
+        "PAY_STAFF_CASH",
+        "NETCASH_OPERATE",
+        "NETCASH_OPERATE_YOY",
+        "NETCASH_INVEST",
+        "NETCASH_FINANCE",
+        "CONSTRUCT_LONG_ASSET",
+        "INVEST_PAY_CASH",
+        "FA_IR_DEPR",
+        "IA_AMORTIZE",
+        "CCE_ADD",
+        "END_CCE_BALANCE",
+    ),
+    "indicators": (
+        "EPSJB",
+        "EPSKCJB",
+        "BPS",
+        "MGJYXJJE",
+        "TOTALOPERATEREVE",
+        "TOTALOPERATEREVETZ",
+        "MLR",
+        "PARENTNETPROFIT",
+        "PARENTNETPROFITTZ",
+        "KCFJCXSYJLR",
+        "KCFJCXSYJLRTZ",
+        "XSMLL",
+        "XSJLL",
+        "ROEJQ",
+        "ROEKCJQ",
+        "ZZCJLL",
+        "ROIC",
+        "ZCFZL",
+        "LD",
+        "SD",
+        "XJLLB",
+        "YSZKYYSR",
+        "JYXJLYYSR",
+        "TOTAL_SHARE",
+        "STAFF_NUM",
+    ),
+}
 
 
 def _error(message: str) -> str:
@@ -119,6 +222,23 @@ def _error(message: str) -> str:
         A ``{"ok": false, "error": ...}`` JSON string.
     """
     return json.dumps({"ok": False, "error": message}, ensure_ascii=False)
+
+
+def _clamp_periods(value: Any) -> int:
+    """Coerce a requested period count into ``1.._MAX_PERIODS``.
+
+    Args:
+        value: Raw ``limit`` argument from the tool call.
+
+    Returns:
+        The clamped period count, defaulting to :data:`_DEFAULT_PERIODS` when the
+        value is absent or not an integer.
+    """
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        return _DEFAULT_PERIODS
+    return max(1, min(n, _MAX_PERIODS))
 
 
 def _truncate_period(record: dict[str, Any]) -> dict[str, Any]:
@@ -137,17 +257,72 @@ def _truncate_period(record: dict[str, Any]) -> dict[str, Any]:
     return dict(items[:_MAX_FIELDS_PER_PERIOD])
 
 
-def _cap_periods(periods: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Keep the most recent periods, each truncated to a safe field count.
+def _project_period(
+    record: dict[str, Any], keep: tuple[str, ...] | None
+) -> dict[str, Any]:
+    """Reduce one period record to the requested fields.
+
+    Args:
+        record: A flat period dict (field name -> value).
+        keep: Field names to retain, or ``None`` for no projection.
+
+    Returns:
+        A new dict holding the period keys that exist in ``record`` plus every
+        requested field present in ``record``. A projection that matches nothing
+        falls back to the unprojected record so a provider rename cannot silently
+        empty the payload.
+    """
+    if keep is None:
+        return _truncate_period(record)
+
+    matched = [key for key in keep if key in record]
+    if not matched:
+        return _truncate_period(record)
+
+    projected = {key: record[key] for key in _PERIOD_KEYS if key in record}
+    projected.update({key: record[key] for key in matched})
+    return projected
+
+
+def _resolve_fields(
+    statement: str, fields: list[str] | None, *, curated: bool = True
+) -> tuple[str, ...] | None:
+    """Decide which fields to keep for a statement.
+
+    Args:
+        statement: One of :data:`_VALID_STATEMENTS`.
+        fields: Caller-supplied field names. ``["*"]`` asks for every provider
+            field; ``None``/empty asks for the curated default.
+        curated: Whether the curated per-statement set applies. False for US
+            statements, whose us-gaap concept names differ from the A-share
+            provider field names in :data:`_CORE_FIELDS`.
+
+    Returns:
+        The field names to keep, or ``None`` to return every provider field.
+    """
+    if fields and fields != ["*"]:
+        return tuple(fields)
+    if fields == ["*"]:
+        return None
+    return _CORE_FIELDS.get(statement) if curated else None
+
+
+def _cap_periods(
+    periods: list[dict[str, Any]],
+    limit: int = _DEFAULT_PERIODS,
+    keep: tuple[str, ...] | None = None,
+) -> list[dict[str, Any]]:
+    """Keep the most recent periods and project each onto the wanted fields.
 
     Args:
         periods: Period records as returned by the provider parser.
+        limit: Maximum number of most-recent periods to keep.
+        keep: Field names to retain per period, or ``None`` to keep all fields.
 
     Returns:
-        A new list of at most :data:`_MAX_PERIODS` field-capped records.
+        A new list of at most ``limit`` projected records.
     """
-    capped = periods[:_MAX_PERIODS]
-    return [_truncate_period(record) for record in capped]
+    return [_project_period(record, keep) for record in periods[:limit]]
 
 
 def _eastmoney_market_group(secid: str) -> str | None:
@@ -242,7 +417,12 @@ def _filter_by_period(
 
 
 def _fetch_eastmoney_statement(
-    code: str, *, statement: str, period: str
+    code: str,
+    *,
+    statement: str,
+    period: str,
+    limit: int = _DEFAULT_PERIODS,
+    keep: tuple[str, ...] | None = None,
 ) -> dict[str, Any]:
     """Fetch one A-share/HK statement from Eastmoney, shaped into a result dict.
 
@@ -250,6 +430,8 @@ def _fetch_eastmoney_statement(
         code: Symbol (e.g. ``"600519.SH"`` or ``"00700.HK"``).
         statement: One of :data:`_VALID_STATEMENTS`.
         period: ``"annual"`` or ``"quarter"``.
+        limit: Maximum number of most-recent periods to return.
+        keep: Field names to retain per period, or ``None`` to keep all fields.
 
     Returns:
         ``{"periods": [...]}`` on success or ``{"error": ...}`` on failure;
@@ -263,6 +445,10 @@ def _fetch_eastmoney_statement(
     if group is None:
         return {"error": "symbol is not an A-share or Hong Kong instrument"}
 
+    # Fetch the full series so ``annual`` filtering still has history to draw on,
+    # then narrow server-side cost by asking only for as many rows as needed.
+    fetch_rows = _MAX_PERIODS if period == "annual" else limit
+
     params = {
         "reportName": _EM_REPORT_NAME[group][statement],
         "columns": "ALL",
@@ -270,7 +456,7 @@ def _fetch_eastmoney_statement(
         "sortColumns": "REPORT_DATE",
         "sortTypes": "-1",
         "pageNumber": "1",
-        "pageSize": str(_MAX_PERIODS),
+        "pageSize": str(fetch_rows),
         "source": "F10",
         "client": "PC",
     }
@@ -281,7 +467,7 @@ def _fetch_eastmoney_statement(
         return {"error": str(exc)}
 
     periods = _filter_by_period(_parse_eastmoney_periods(payload), period)
-    return {"periods": _cap_periods(periods)}
+    return {"periods": _cap_periods(periods, limit, keep)}
 
 
 def _to_number(value: Any) -> float | None:
@@ -313,13 +499,22 @@ def _sec_period_matches(row: dict[str, Any], period: str) -> bool:
     return fp == "FY" or form == "10-K"
 
 
-def _fetch_sec_statement(code: str, *, statement: str, period: str) -> dict[str, Any]:
+def _fetch_sec_statement(
+    code: str,
+    *,
+    statement: str,
+    period: str,
+    limit: int = _DEFAULT_PERIODS,
+    keep: tuple[str, ...] | None = None,
+) -> dict[str, Any]:
     """Fetch one US statement from SEC companyfacts, shaped as flat periods.
 
     Args:
         code: US symbol with ``.US`` suffix, e.g. ``"AAPL.US"``.
         statement: One of :data:`_VALID_STATEMENTS`.
         period: ``"annual"`` or ``"quarter"``.
+        limit: Maximum number of most-recent periods to return.
+        keep: Field names to retain per period, or ``None`` to keep all fields.
 
     Returns:
         ``{"periods": [...]}`` on success or ``{"error": ...}`` on failure.
@@ -377,7 +572,7 @@ def _fetch_sec_statement(code: str, *, statement: str, period: str) -> dict[str,
         key=lambda row: str(row.get("REPORT_DATE") or ""),
         reverse=True,
     )
-    return {"periods": _cap_periods(periods)}
+    return {"periods": _cap_periods(periods, limit, keep)}
 
 
 def _classify_market(code: str) -> str | None:
@@ -441,6 +636,29 @@ class FinancialStatementsTool(BaseTool):
                 ),
                 "default": "annual",
             },
+            "limit": {
+                "type": "integer",
+                "description": (
+                    "How many most-recent periods to return "
+                    f"(1-{_MAX_PERIODS}). Defaults to {_DEFAULT_PERIODS}. Raise it "
+                    "only when a long history is genuinely needed: each period "
+                    "carries the full field set."
+                ),
+                "default": _DEFAULT_PERIODS,
+            },
+            "fields": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": (
+                    "Which line items to return. Omit for a curated core set of "
+                    "~20-25 analyst-relevant fields per statement (INCOME: "
+                    "TOTAL_OPERATE_INCOME / PARENT_NETPROFIT / BASIC_EPS ...; "
+                    "BALANCE: TOTAL_ASSETS / INVENTORY / TOTAL_LIABILITIES ...; "
+                    "CASHFLOW: NETCASH_OPERATE / NETCASH_INVEST ...). Pass explicit "
+                    "names for anything else, or ['*'] for every provider field "
+                    "(~200 per period, very large)."
+                ),
+            },
         },
         "required": ["code"],
     }
@@ -451,7 +669,9 @@ class FinancialStatementsTool(BaseTool):
         Args:
             **kwargs: ``code`` (str, required), ``statement`` (one of balance|
                 income|cashflow|indicators, default 'indicators'), ``period``
-                (annual|quarter, default 'annual').
+                (annual|quarter, default 'annual'), ``limit`` (periods to
+                return, default 8), ``fields`` (explicit line items, or ``['*']``
+                for every provider field; omitted means the curated core set).
 
         Returns:
             A JSON string ``{"ok": true, "market": str, "source": str,
@@ -480,12 +700,19 @@ class FinancialStatementsTool(BaseTool):
                 "code must carry a supported suffix: .SH/.SZ/.BJ, .US, or .HK"
             )
 
+        limit = _clamp_periods(kwargs.get("limit", _DEFAULT_PERIODS))
+        raw_fields = kwargs.get("fields")
+        fields = [str(f) for f in raw_fields] if isinstance(raw_fields, list) else None
+        keep = _resolve_fields(statement, fields, curated=market != "us")
+
         if market == "us":
-            result = _fetch_sec_statement(code, statement=statement, period=period)
+            result = _fetch_sec_statement(
+                code, statement=statement, period=period, limit=limit, keep=keep
+            )
             source = "sec_edgar"
         else:
             result = _fetch_eastmoney_statement(
-                code, statement=statement, period=period
+                code, statement=statement, period=period, limit=limit, keep=keep
             )
             source = "eastmoney"
 
@@ -501,6 +728,14 @@ class FinancialStatementsTool(BaseTool):
             "period": period,
             "data": {code: result},
         }
+        if not all_failed and keep is not None:
+            # Tell the caller the payload was projected, so a missing line item
+            # is never mistaken for an unreported one.
+            envelope["fields_mode"] = "core"
+            envelope["fields_available"] = (
+                "pass fields=['<name>', ...] for specific items, "
+                "or fields=['*'] for every provider field"
+            )
         if all_failed:
             envelope["error"] = result["error"]
         return json.dumps(envelope, ensure_ascii=False)
