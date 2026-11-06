@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import types
 
 import pytest
@@ -87,18 +88,47 @@ def test_extract_title_prefers_markdown_heading() -> None:
 def test_extract_title_falls_back_to_job_label() -> None:
     text = "📊 定时研究结果 · 使用技能 star50-warning 给科创50打分\n\n一、评分 62\n二、结论…"
     title, body = extract_title_and_body(text)
-    assert title == "使用技能 star50-warning 给科创50打分"
+    assert title.startswith("使用技能 star50-warning 给科创50打分")
+    assert re.search(r"· \d{2}-\d{2}$", title)
     assert body.startswith("一、评分")
 
 def test_extract_title_uses_first_line_for_plain_text() -> None:
     title, _ = extract_title_and_body("科创50 昨日放量上涨，短期动量转强。\n后续关注…")
-    assert title == "科创50 昨日放量上涨，短期动量转强。"
+    # 没有 markdown 标题时取任务名/首段的第一个短句，并带上当天日期
+    assert title.startswith("科创50 昨日放量上涨")
+    assert re.search(r"· \d{2}-\d{2}$", title)
+
+
+def test_extract_title_skips_chitchat_before_heading() -> None:
+    text = (
+        "📊 定时研究结果 · 盘前扫描：按昨日异常成交量排名\n\n"
+        "数据已经全部到位。以下是完整报告。\n\n---\n\n"
+        "# 盘前扫描 | 2026-11-09（周一）\n\n"
+        "> **一句话定调**：周一大面积高开修复，看量能是否跟上。\n"
+    )
+    title, body = extract_title_and_body(text)
+    assert title == "盘前扫描 | 2026-11-09（周一）"
+    # 寒暄与标题行都不留在正文里
+    assert body.startswith("> **一句话定调**")
 
 
 def test_extract_title_clips_long_line() -> None:
     title, _ = extract_title_and_body("很长的标题" * 40)
     assert len(title) <= 60
-    assert title.endswith("…")
+    assert title.endswith("…") or re.search(r"· \d{2}-\d{2}$", title)
+
+
+def test_summarize_prefers_call_line_from_blockquote() -> None:
+    body = (
+        "# 盘前扫描 | 2026-11-09\n\n"
+        "> **数据基准**：A股 11/6 收盘\n"
+        "> **一句话定调**：周一大面积高开修复，关键看量能能否跟上。\n\n"
+        "## 一、昨日复盘\n\n指数全线低开。"
+    )
+    summary = summarize(body)
+    assert summary.startswith("一句话定调")
+    assert "量能" in summary
+    assert "**" not in summary
 
 
 def test_summarize_strips_markdown_and_limits_length() -> None:

@@ -18,7 +18,9 @@ import logging
 import re
 import time
 from collections import OrderedDict
+from datetime import datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import httpx
 from pydantic import AliasChoices, BaseModel, Field
@@ -36,6 +38,8 @@ DEFAULT_TAGS = "定时研报"
 
 TITLE_MAX_LEN = 60
 SUMMARY_MAX_LEN = 160
+# 报告标题通常在前几行（模型会先写一句寒暄），只在开头这些行里找
+_TITLE_SCAN_LINES = 8
 # 发送失败时 ChannelManager 会重试，重试窗口内用内容指纹去重，避免同一份
 # 研报在 App 里出现多条。
 DEDUPE_TTL_S = 300
@@ -44,7 +48,13 @@ DEDUPE_MAX_ENTRIES = 64
 # 定时任务的投递前缀由 scheduled_routes 统一加，形如：
 #   📊 定时研究结果 · 盘前扫描：按昨日异常成交量排名…
 _SCHEDULED_PREFIX_RE = re.compile(r"^📊\s*定时研究结果\s*·\s*(?P<label>[^\n]*)\n*")
-_MARKDOWN_HEADING_RE = re.compile(r"^#{1,6}\s+(?P<title>.+?)\s*#*$")
+# 只认一级/二级标题：正文里的 ### 小标题是章节，不当研报标题
+_TITLE_HEADING_RE = re.compile(r"^#{1,2}\s+(?P<title>.+?)\s*#*$")
+# 任务名按这些标点取第一段，如「盘前扫描：按昨日异常成交量…」→「盘前扫描」
+_LABEL_SPLIT_RE = re.compile(r"[：:，,。；;|｜]")
+_SUMMARY_HINTS = ("一句话", "定调", "结论", "摘要", "核心观点")
+# 列表项（- / * / 1.），区别于以 * 开头的加粗正文（**结论**：…）
+_BULLET_RE = re.compile(r"^(?:[-*+]|\d+\.)\s")
 _MARKDOWN_NOISE_RE = re.compile(r"(\*\*|__|`{1,3}|^[>\-*+]\s+|!?\[[^\]]*\]\([^)]*\))")
 
 
@@ -78,10 +88,13 @@ class MyFinanceConfig(BaseModel):
 def extract_title_and_body(text: str) -> tuple[str, str]:
     """从定时任务结果里拆出标题与正文。
 
-    优先级：正文里的第一个 markdown 标题 > 投递前缀里的任务名 > 首个非空行。
+    优先级：正文开头的 markdown 一级/二级标题 > 投递前缀里的任务名 + 日期。
     投递前缀（``📊 定时研究结果 · <任务名>``）只是渠道层的排版，不该当成
-    研报标题，所以命中前缀时先剥掉再找标题。被用作标题的那一行会从正文里
-    去掉，避免 App 详情页「大标题 + 正文第一行同样标题」重复。
+    研报标题，所以命中前缀时先剥掉再找标题。
+
+    标题往往不在第一行：模型常先写一句「数据已经全部到位。以下是完整报告。」
+    再给 ``# 盘前扫描 | 2026-11-09``，所以在前几行里找标题；命中后把标题行
+    之前的寒暄一并丢掉，避免 App 详情页出现「大标题 + 正文重复一遍」。
     """
     body = text.strip()
     label = ""
@@ -91,33 +104,52 @@ def extract_title_and_body(text: str) -> tuple[str, str]:
         body = body[prefix.end():].strip()
 
     lines = body.splitlines()
-    for index, line in enumerate(lines):
-        stripped = line.strip()
-        if not stripped:
-            continue
-        heading = _MARKDOWN_HEADING_RE.match(stripped)
+    for index, line in enumerate(lines[:_TITLE_SCAN_LINES]):
+        heading = _TITLE_HEADING_RE.match(line.strip())
         if heading:
             rest = "\n".join(lines[index + 1:]).strip()
             return _clip(heading.group("title"), TITLE_MAX_LEN), rest or body
-        break
 
-    fallback = label or next((line.strip() for line in lines if line.strip()), "")
-    return _clip(fallback or "定时研报", TITLE_MAX_LEN), body
+    return _fallback_title(label or _first_text_line(lines)), body
+
+
+def _fallback_title(label: str) -> str:
+    """没有 markdown 标题时，用任务名里最像标题的一段 + 当天日期。"""
+    short = _LABEL_SPLIT_RE.split(label.strip(), maxsplit=1)[0].strip()
+    return f"{_clip(short or '定时研报', TITLE_MAX_LEN - 8)} · {_today_suffix()}"
+
+
+def _today_suffix() -> str:
+    return datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%m-%d")
+
+
+def _first_text_line(lines: list[str]) -> str:
+    for line in lines:
+        stripped = line.strip()
+        if stripped and stripped[0] not in "#>|!-*":
+            return stripped
+    return ""
 
 
 def summarize(body: str) -> str:
-    """给列表页用的纯文本摘要：去掉标题行与 markdown 标记，截断到 160 字。"""
-    lines = []
-    for line in body.splitlines():
-        stripped = line.strip()
-        if not stripped:
-            if lines:
-                break
+    """给列表页用的纯文本摘要。
+
+    优先取报告里的「一句话定调 / 结论」式引用块——那通常是整篇里信息密度最高
+    的一行；没有就退回第一个普通段落。标题、分隔线、表格与列表一律跳过。
+    """
+    lines = [line.strip() for line in body.splitlines()]
+
+    for line in lines:
+        if line.startswith(">") and any(hint in line for hint in _SUMMARY_HINTS):
+            return _clip(_MARKDOWN_NOISE_RE.sub("", line.lstrip("> ")), SUMMARY_MAX_LEN)
+
+    for line in lines:
+        if not line or line.startswith(("#", ">", "|", "!")):
             continue
-        if _MARKDOWN_HEADING_RE.match(stripped):
+        if _BULLET_RE.match(line) or set(line) <= {"-", " "}:
             continue
-        lines.append(_MARKDOWN_NOISE_RE.sub("", stripped))
-    return _clip(" ".join(lines), SUMMARY_MAX_LEN)
+        return _clip(_MARKDOWN_NOISE_RE.sub("", line), SUMMARY_MAX_LEN)
+    return ""
 
 
 def _clip(value: str, limit: int) -> str:
