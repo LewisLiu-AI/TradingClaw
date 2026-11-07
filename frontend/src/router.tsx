@@ -31,6 +31,9 @@ const Scheduled = lazy(() =>
 const Plugins = lazy(() =>
   import("@/pages/Plugins").then((m) => ({ default: m.Plugins })),
 );
+const Berkshire = lazy(() =>
+  import("@/pages/Berkshire").then((m) => ({ default: m.Berkshire })),
+);
 
 function PageLoader() {
   return (
@@ -53,6 +56,7 @@ export const router = createBrowserRouter([
     element: <Layout />,
     children: [
       { path: "/", element: wrap(Home) },
+      { path: "/berkshire", element: wrap(Berkshire) },
       { path: "/agent", element: wrap(Agent) },
       { path: "/runtime", element: wrap(Runtime) },
       { path: "/reports", element: wrap(Reports) },

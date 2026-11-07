@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { useEffect, useRef, useState } from "react";
 import { Link, Outlet, useLocation, useSearchParams } from "react-router-dom";
-import { Activity, BarChart3, Bot, CalendarClock, Check, ChevronDown, FileText, Languages, Moon, Sun, Plus, Trash2, Pencil, MessageSquare, ChevronsLeft, ChevronsRight, Settings, Layers, Loader2, Puzzle } from "lucide-react";
+import { Activity, BarChart3, Bot, CalendarClock, Check, ChevronDown, FileText, Languages, Moon, Sun, Plus, Trash2, Pencil, MessageSquare, ChevronsLeft, ChevronsRight, Settings, Layers, Loader2, Puzzle, Landmark } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDarkMode } from "@/hooks/useDarkMode";
 import { api, type SessionItem } from "@/lib/api";
@@ -16,15 +16,16 @@ export function Layout() {
   const { t } = useTranslation();
 
   const NAV = [
-    { to: "/", icon: BarChart3, label: t('layout.home') },
-    { to: "/agent", icon: Bot, label: t('layout.agent') },
-    { to: "/runtime", icon: Activity, label: t('layout.runtime') },
-    { to: "/reports", icon: FileText, label: t('layout.reports') },
-    { to: "/alpha-zoo", icon: Layers, label: t('layout.alphaZoo') },
-    { to: "/plugins", icon: Puzzle, label: t('layout.plugins') },
-    { to: "/settings", icon: Settings, label: t('layout.settings') },
-    { to: "/correlation", icon: BarChart3, label: t('layout.correlation') },
-    { to: "/scheduled", icon: CalendarClock, label: t('layout.scheduled') },
+    { to: "/", icon: BarChart3, label: t('layout.home'), accent: false },
+    { to: "/agent", icon: Bot, label: t('layout.agent'), accent: false },
+    { to: "/berkshire", icon: Landmark, label: t('layout.berkshire'), accent: true },
+    { to: "/runtime", icon: Activity, label: t('layout.runtime'), accent: false },
+    { to: "/reports", icon: FileText, label: t('layout.reports'), accent: false },
+    { to: "/alpha-zoo", icon: Layers, label: t('layout.alphaZoo'), accent: false },
+    { to: "/plugins", icon: Puzzle, label: t('layout.plugins'), accent: false },
+    { to: "/settings", icon: Settings, label: t('layout.settings'), accent: false },
+    { to: "/correlation", icon: BarChart3, label: t('layout.correlation'), accent: false },
+    { to: "/scheduled", icon: CalendarClock, label: t('layout.scheduled'), accent: false },
   ];
   const { pathname } = useLocation();
   const [searchParams] = useSearchParams();
@@ -92,8 +93,9 @@ export function Layout() {
 
         {/* Nav */}
         <nav className={cn("space-y-0.5", collapsed ? "p-1" : "p-2")}>
-          {NAV.map(({ to, icon: Icon, label }) => {
+          {NAV.map(({ to, icon: Icon, label, accent }) => {
             const text = label;
+            const active = to === "/" ? pathname === "/" : pathname.startsWith(to);
             return (
               <Link
                 key={to}
@@ -101,9 +103,11 @@ export function Layout() {
                 className={cn(
                   "flex items-center rounded-md text-sm transition-colors",
                   collapsed ? "justify-center p-2" : "gap-3 px-3 py-2",
-                  (to === "/" ? pathname === "/" : pathname.startsWith(to))
+                  active
                     ? "bg-primary/10 text-primary font-medium"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    : accent
+                      ? "bg-primary/5 text-foreground/90 hover:bg-primary/10 hover:text-foreground"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
                 )}
                 title={collapsed ? text : undefined}
               >

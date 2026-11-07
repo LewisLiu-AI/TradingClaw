@@ -7,6 +7,18 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **巴菲特 workspace — a dedicated Web UI menu for the AI-Berkshire suite**.
+  A new `/berkshire` page (sidebar entry 「巴菲特」) turns the 21 user skills
+  into a browsable workspace instead of a chat-only capability: skills are
+  grouped into six families (深度研究 / 财报精读 / 筛选排查 / 行业与趋势 /
+  组合与纪律 / 收益与输出), searchable by name or scenario, and each card opens
+  a dialog with what to provide, the deliverable, expected turnaround and an
+  editable subject. Launching creates a chat session, sends a prompt that
+  explicitly calls `load_skill("<id>")`, and navigates to `/agent?session=…`
+  so the run starts immediately. Sessions started here are titled
+  `巴菲特 · <skill> · <subject>` and listed under 最近研究. The page also
+  cross-checks `GET /plugins` and flags skills that are installed-but-disabled
+  instead of failing silently.
 - **AI-Berkshire skill suite installed as user skills** (21 skills from
   [xbtlin/ai-berkshire](https://github.com/xbtlin/ai-berkshire) + a `berkshire`
   router skill). Each skill carries a TradingClaw data-acceleration layer:
